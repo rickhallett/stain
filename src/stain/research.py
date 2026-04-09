@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import re
+
 import httpx
 import litellm
 import yaml
@@ -26,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 RESEARCH_DIR = Path("research")
 AGENTS_DIR = Path("agents")
+
+# Paper IDs must be safe for filesystem use
+VALID_PAPER_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class ResearchError(Exception):
@@ -108,6 +113,9 @@ def fetch_papers_from_arcana(
         if status != "complete":
             continue
         if job_id in existing_ids:
+            continue
+        if not VALID_PAPER_ID.match(job_id):
+            logger.warning(f"Skipping job with unsafe ID: {job_id!r}")
             continue
 
         try:
@@ -241,8 +249,13 @@ def research_extract(
     store = load_hypothesis_store(discovery_dir / "hypotheses.yaml")
     total_new = 0
 
+    processed = 0
     for paper in unprocessed:
-        raw_hypotheses = extract_hypotheses_from_paper(paper, model=model)
+        try:
+            raw_hypotheses = extract_hypotheses_from_paper(paper, model=model)
+        except Exception as e:
+            logger.warning(f"Extraction failed for {paper.paper_id}: {e}")
+            continue
 
         extraction_file = extractions_dir / f"{paper.paper_id}.json"
         extraction_file.write_text(json.dumps({
@@ -257,11 +270,15 @@ def research_extract(
         total_new += new
 
         paper.extracted = True
+        processed += 1
 
-    save_paper_index(index, research_dir / "index.yaml")
-    save_hypothesis_store(store, discovery_dir / "hypotheses.yaml")
+        # Save incrementally — hypotheses first (the valuable data),
+        # then index (marking extracted). If we crash between the two,
+        # worst case is re-extracting a paper, not losing hypotheses.
+        save_hypothesis_store(store, discovery_dir / "hypotheses.yaml")
+        save_paper_index(index, research_dir / "index.yaml")
 
-    return total_new, len(unprocessed)
+    return total_new, processed
 
 
 def research_update(

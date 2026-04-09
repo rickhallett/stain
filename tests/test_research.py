@@ -130,6 +130,25 @@ class TestFetchFromArcana:
             with pytest.raises(ResearchError, match="connect"):
                 fetch_papers_from_arcana("http://localhost:9999")
 
+    def test_fetch_rejects_path_traversal_id(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": "../../../etc/passwd", "filename": "evil.pdf", "status": "complete", "doc_type": "pdf"},
+            {"id": "safe_job_01", "filename": "good.pdf", "status": "complete", "doc_type": "pdf"},
+        ]
+        mock_detail = MagicMock()
+        mock_detail.status_code = 200
+        mock_detail.json.return_value = {
+            "id": "safe_job_01", "filename": "good.pdf", "status": "complete",
+            "report": {"answer": "Safe paper content."},
+        }
+        with patch("stain.research.httpx.get") as mock_get:
+            mock_get.side_effect = [mock_response, mock_detail]
+            papers = fetch_papers_from_arcana("http://localhost:8000")
+        assert len(papers) == 1
+        assert papers[0].paper_id == "safe_job_01"
+
 
 class TestLoadResearchPrompt:
     def test_load_prompt(self):
