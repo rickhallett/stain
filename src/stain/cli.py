@@ -326,3 +326,164 @@ def detectors_list(show_all: bool):
         )
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Corpus commands
+# ---------------------------------------------------------------------------
+
+def _corpus_dir() -> Path:
+    """Get corpus root directory from config."""
+    config = load_config()
+    return Path(config.get("corpus", {}).get("path", "corpus"))
+
+
+@cli.group()
+def corpus():
+    """Manage corpus tiers and samples."""
+    pass
+
+
+@corpus.command("stats")
+def corpus_stats_cmd():
+    """Show sample counts per tier."""
+    from stain.corpus import corpus_stats as _corpus_stats
+
+    root = _corpus_dir()
+    stats = _corpus_stats(root)
+
+    table = Table(title="Corpus Stats")
+    table.add_column("Tier", style="bold")
+    table.add_column("Human", justify="right")
+    table.add_column("LLM", justify="right")
+    table.add_column("Total", justify="right")
+
+    for tier_name in ["gold", "bulk"]:
+        if tier_name in stats:
+            t = stats[tier_name]
+            table.add_row(tier_name, str(t.get("human", 0)), str(t.get("llm", 0)), str(t["total"]))
+
+    if "ambiguous" in stats:
+        table.add_row("ambiguous", "-", "-", str(stats["ambiguous"]["total"]))
+
+    console.print(table)
+    console.print(f"\n[bold]Total samples:[/bold] {stats.get('total', 0)}")
+
+
+@corpus.command("validate")
+def corpus_validate_cmd():
+    """Check manifests match filesystem, detect duplicates."""
+    from stain.corpus import corpus_validate as _corpus_validate
+
+    root = _corpus_dir()
+    issues = _corpus_validate(root)
+
+    if not issues:
+        console.print("[green]Corpus is valid. No issues found.[/green]")
+    else:
+        console.print(f"[red]Found {len(issues)} issue(s):[/red]")
+        for issue in issues:
+            console.print(f"  - {issue}")
+        raise SystemExit(1)
+
+
+@corpus.command("label")
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--as", "label", required=True, type=click.Choice(["human", "llm"]))
+@click.option("--tier", default="gold", type=click.Choice(["gold", "bulk"]))
+@click.option("--source", required=True, help="Content origin")
+@click.option("--domain", required=True, help="Content domain (blog, linkedin, etc.)")
+def corpus_label_cmd(file_path: str, label: str, tier: str, source: str, domain: str):
+    """Label an ambiguous sample and promote to a tier."""
+    from stain.corpus import corpus_label as _corpus_label
+
+    root = _corpus_dir()
+    entry = _corpus_label(
+        corpus_dir=root,
+        file_path=Path(file_path),
+        label=label,
+        tier=tier,
+        source=source,
+        domain=domain,
+    )
+    console.print(f"[green]Labelled {entry.id} as {label} in {tier}[/green]")
+
+
+@corpus.command("generate")
+@click.option("--type", "sample_type", required=True, type=click.Choice(["llm", "human"]))
+@click.option("--count", default=10, type=int, help="Number of samples")
+@click.option("--domain", default="linkedin,blog,marketing", help="Comma-separated domains")
+@click.option("--model", default=None, help="LLM model (litellm format)")
+@click.option("--temp", default="0.7", help="Comma-separated temperatures")
+@click.option("--tier", default="bulk", type=click.Choice(["gold", "bulk"]))
+@click.option("--sources", default=None, help="Author keys or URLs (comma-separated, for --type human)")
+@click.option("--wayback/--no-wayback", default=True, help="Try Wayback Machine fallback")
+def corpus_generate_cmd(
+    sample_type: str,
+    count: int,
+    domain: str,
+    model: str | None,
+    temp: str,
+    tier: str,
+    sources: str | None,
+    wayback: bool,
+):
+    """Generate bulk corpus samples.
+
+    \b
+    Examples:
+      stain corpus generate --type llm --count 50 --domain linkedin,blog
+      stain corpus generate --type human --sources sivers,pg --tier gold
+    """
+    from stain.generate import generate_llm_samples, scrape_human_samples, AUTHOR_SOURCES
+
+    config = load_config()
+    root = _corpus_dir()
+    output_dir = root / tier
+    domains = [d.strip() for d in domain.split(",")]
+    temperatures = [float(t.strip()) for t in temp.split(",")]
+
+    if model is None:
+        model = config.get("models", {}).get("detector", DEFAULT_MODEL)
+
+    if sample_type == "llm":
+        with console.status(f"[bold]Generating {count} LLM samples..."):
+            entries = generate_llm_samples(
+                count=count,
+                domains=domains,
+                model=model,
+                temperatures=temperatures,
+                output_dir=output_dir,
+            )
+        console.print(f"[green]Generated {len(entries)} LLM samples in {tier}/[/green]")
+
+    elif sample_type == "human":
+        if not sources:
+            console.print("[red]--sources required for human generation (e.g. --sources sivers,pg)[/red]")
+            raise SystemExit(2)
+
+        urls: list[str] = []
+        source_name = "mixed"
+        for src in sources.split(","):
+            src = src.strip()
+            if src in AUTHOR_SOURCES:
+                urls.extend(AUTHOR_SOURCES[src])
+                source_name = src
+            elif src.startswith(("http://", "https://")):
+                urls.append(src)
+            else:
+                console.print(f"[yellow]Unknown source: {src}. Known: {', '.join(AUTHOR_SOURCES.keys())}[/yellow]")
+
+        if not urls:
+            console.print("[red]No valid URLs resolved from sources.[/red]")
+            raise SystemExit(2)
+
+        with console.status(f"[bold]Scraping {len(urls)} URLs..."):
+            entries = scrape_human_samples(
+                urls=urls[:count],
+                output_dir=output_dir,
+                source=source_name,
+                domain=domains[0],
+                wayback_fallback=wayback,
+            )
+        console.print(f"[green]Scraped {len(entries)} human samples in {tier}/[/green]")
