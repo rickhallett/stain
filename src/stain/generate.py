@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import litellm
+import trafilatura
 
 from stain.corpus import Manifest, SampleEntry, load_manifest, save_manifest
 
@@ -99,3 +100,97 @@ def generate_llm_samples(
 
     save_manifest(manifest, manifest_path)
     return entries
+
+
+AUTHOR_SOURCES = {
+    "sivers": [
+        "https://sive.rs/obvious",
+        "https://sive.rs/hellyeah",
+        "https://sive.rs/nospeedlimit",
+        "https://sive.rs/expire",
+        "https://sive.rs/local",
+    ],
+    "pg": [
+        "http://paulgraham.com/mean.html",
+        "http://paulgraham.com/ds.html",
+        "http://paulgraham.com/startupideas.html",
+    ],
+    "godin": [
+        "https://seths.blog/2012/06/organized-bravery/",
+        "https://seths.blog/2010/01/quieting-the-lizard-brain/",
+    ],
+    "jclear": [
+        "https://jamesclear.com/marginal-gains",
+        "https://jamesclear.com/habit-stacking",
+    ],
+}
+
+WAYBACK_PREFIX = "https://web.archive.org/web/2019/"
+
+
+def scrape_human_samples(
+    urls: list[str],
+    output_dir: Path,
+    source: str,
+    domain: str,
+    wayback_fallback: bool = False,
+) -> list[SampleEntry]:
+    """Scrape human-written text from URLs.
+
+    Uses trafilatura for HTML-to-text extraction. If wayback_fallback
+    is True, retries failed URLs through the Internet Archive.
+    """
+    human_dir = output_dir / "known_human"
+    human_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_path = output_dir / "manifest.yaml"
+    if manifest_path.is_file():
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = Manifest(tier=output_dir.name)
+
+    entries: list[SampleEntry] = []
+
+    for url in urls:
+        text = _fetch_and_extract(url)
+
+        if text is None and wayback_fallback:
+            wayback_url = WAYBACK_PREFIX + url
+            text = _fetch_and_extract(wayback_url)
+
+        if text is None:
+            logger.warning(f"Failed to extract text from: {url}")
+            continue
+
+        short_id = uuid.uuid4().hex[:8]
+        slug = url.split("/")[-1].split(".")[0] or short_id
+        slug = slug[:40]
+        filename = f"human_{slug}_{short_id}.txt"
+        filepath = human_dir / filename
+
+        header = f"# Source: {url} | Domain: {domain}\n\n"
+        filepath.write_text(header + text)
+
+        entry = SampleEntry(
+            id=filepath.stem,
+            label="human",
+            source=source,
+            domain=domain,
+            file=f"known_human/{filename}",
+        )
+        entries.append(entry)
+        manifest.samples.append(entry)
+
+    save_manifest(manifest, manifest_path)
+    return entries
+
+
+def _fetch_and_extract(url: str) -> str | None:
+    """Fetch URL and extract text. Returns None on failure."""
+    downloaded = trafilatura.fetch_url(url)
+    if downloaded is None:
+        return None
+    text = trafilatura.extract(downloaded)
+    if not text or not text.strip():
+        return None
+    return text
