@@ -128,3 +128,17 @@ class TestAnalyseMultipleFiles:
             )
             lines = result.output.strip().split("\n")
             assert len(lines) == 2
+
+
+class TestAnalyseMultiFileJson:
+    def test_multi_file_json_includes_source(self, tmp_path):
+        f1 = tmp_path / "a.txt"
+        f2 = tmp_path / "b.txt"
+        f1.write_text("First file with sufficient content to run through the analyser.")
+        f2.write_text("Second file also with enough text for the analyser to process.")
+        with patch("stain.cli.analyse", return_value=_mock_analyse()):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli, ["analyse", str(f1), str(f2), "--json"],
+            )
+            assert "source" in result.output
