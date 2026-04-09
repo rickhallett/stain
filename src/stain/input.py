@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TextIO
 
+import trafilatura
+
 
 class SourceType(str, Enum):
     FILE = "file"
@@ -113,5 +115,11 @@ def _read_stdin(stream: TextIO) -> InputItem:
 
 
 def _fetch_url(url: str) -> InputItem:
-    """Fetch a URL and extract text content. Requires trafilatura."""
-    raise NotImplementedError("URL fetching requires trafilatura (Task 3)")
+    """Fetch a URL and extract text content using trafilatura."""
+    downloaded = trafilatura.fetch_url(url)
+    if downloaded is None:
+        raise InputError(f"Failed to fetch URL: {url}")
+    text = trafilatura.extract(downloaded)
+    if not text or not text.strip():
+        raise InputError(f"No text content extracted from URL: {url}")
+    return InputItem(text=text, source=url, source_type=SourceType.URL)

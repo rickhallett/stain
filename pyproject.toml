@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.0,<3",
     "rich>=13.0,<15",
     "python-dotenv>=1.2.2,<2",
+    "trafilatura>=2.0,<3",
 ]
 
 [project.scripts]

@@ -1,6 +1,7 @@
 """Tests for input resolution — files, stdin, URLs, globs."""
 
 import io
+from unittest.mock import patch
 
 import pytest
 from pathlib import Path
@@ -82,3 +83,35 @@ class TestStdin:
         stream = io.StringIO("   \n\n  ")
         with pytest.raises(InputError, match="empty"):
             resolve_inputs(("-",), stdin_stream=stream)
+
+
+class TestUrlFetching:
+    def test_fetch_url(self):
+        with patch("stain.input.trafilatura") as mock_traf:
+            mock_traf.fetch_url.return_value = "<html><body><p>Article text here</p></body></html>"
+            mock_traf.extract.return_value = "Article text here"
+            items = resolve_inputs(("https://example.com/post",))
+            assert len(items) == 1
+            assert items[0].text == "Article text here"
+            assert items[0].source == "https://example.com/post"
+            assert items[0].source_type == SourceType.URL
+
+    def test_fetch_url_failure_raises(self):
+        with patch("stain.input.trafilatura") as mock_traf:
+            mock_traf.fetch_url.return_value = None
+            with pytest.raises(InputError, match="Failed to fetch"):
+                resolve_inputs(("https://example.com/broken",))
+
+    def test_fetch_url_no_text_raises(self):
+        with patch("stain.input.trafilatura") as mock_traf:
+            mock_traf.fetch_url.return_value = "<html></html>"
+            mock_traf.extract.return_value = None
+            with pytest.raises(InputError, match="No text content"):
+                resolve_inputs(("https://example.com/empty",))
+
+    def test_http_detected_as_url(self):
+        with patch("stain.input.trafilatura") as mock_traf:
+            mock_traf.fetch_url.return_value = "<p>text</p>"
+            mock_traf.extract.return_value = "text content"
+            items = resolve_inputs(("http://example.com/insecure",))
+            assert items[0].source_type == SourceType.URL
