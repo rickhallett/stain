@@ -142,3 +142,64 @@ class TestAnalyseMultiFileJson:
                 cli, ["analyse", str(f1), str(f2), "--json"],
             )
             assert "source" in result.output
+
+
+class TestCorpusStats:
+    def test_stats_output(self, tmp_path):
+        from stain.corpus import Manifest, SampleEntry, save_manifest
+        gold_dir = tmp_path / "gold"
+        (gold_dir / "known_human").mkdir(parents=True)
+        (gold_dir / "known_llm").mkdir(parents=True)
+        (gold_dir / "known_human" / "h1.txt").write_text("human text")
+        (gold_dir / "known_llm" / "l1.txt").write_text("llm text")
+        (gold_dir / "known_llm" / "l2.txt").write_text("llm text 2")
+        save_manifest(Manifest(tier="gold", samples=[
+            SampleEntry(id="h1", label="human", source="test", domain="blog", file="known_human/h1.txt"),
+            SampleEntry(id="l1", label="llm", source="gen", domain="blog", file="known_llm/l1.txt"),
+            SampleEntry(id="l2", label="llm", source="gen", domain="blog", file="known_llm/l2.txt"),
+        ]), gold_dir / "manifest.yaml")
+
+        with patch("stain.cli._corpus_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["corpus", "stats"])
+            assert result.exit_code == 0
+            assert "gold" in result.output.lower()
+
+
+class TestCorpusValidate:
+    def test_validate_clean(self, tmp_path):
+        from stain.corpus import Manifest, SampleEntry, save_manifest
+        gold_dir = tmp_path / "gold"
+        (gold_dir / "known_human").mkdir(parents=True)
+        (gold_dir / "known_human" / "h1.txt").write_text("text")
+        save_manifest(Manifest(tier="gold", samples=[
+            SampleEntry(id="h1", label="human", source="test", domain="blog", file="known_human/h1.txt"),
+        ]), gold_dir / "manifest.yaml")
+
+        with patch("stain.cli._corpus_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["corpus", "validate"])
+            assert result.exit_code == 0
+
+
+class TestCorpusGenerate:
+    def test_generate_llm_invokes(self, tmp_path):
+        from stain.corpus import Manifest, save_manifest
+        bulk_dir = tmp_path / "bulk"
+        (bulk_dir / "known_llm").mkdir(parents=True)
+        save_manifest(Manifest(tier="bulk", samples=[]), bulk_dir / "manifest.yaml")
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Generated text for CLI test."
+
+        with patch("stain.generate.litellm.completion", return_value=mock_response), \
+             patch("stain.cli._corpus_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, [
+                "corpus", "generate",
+                "--type", "llm",
+                "--count", "2",
+                "--domain", "linkedin",
+            ])
+            assert result.exit_code == 0

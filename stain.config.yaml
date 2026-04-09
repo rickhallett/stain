@@ -28,8 +28,8 @@ models:
 
 corpus:
   path: corpus/
-  known_llm: corpus/known_llm/
-  known_human: corpus/known_human/
+  gold: corpus/gold/
+  bulk: corpus/bulk/
   ambiguous: corpus/ambiguous/
 
 results:
