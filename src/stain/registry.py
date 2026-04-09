@@ -12,12 +12,29 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import importlib.resources
+
 import yaml
 
 
 logger = logging.getLogger(__name__)
 
-DETECTORS_DIR = Path("detectors")
+
+def _find_detectors_dir() -> Path:
+    """Find detectors directory — local first, then package data."""
+    local = Path("detectors")
+    if local.is_dir():
+        return local
+    try:
+        pkg_data = importlib.resources.files("stain") / "data" / "detectors"
+        if pkg_data.is_dir():
+            return Path(str(pkg_data))
+    except (TypeError, FileNotFoundError):
+        pass
+    return local
+
+
+DETECTORS_DIR = _find_detectors_dir()
 
 # Module-level cache: populated on first discover_detectors() call
 _cache: dict[str, "DetectorInfo"] | None = None
