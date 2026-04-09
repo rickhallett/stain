@@ -1,0 +1,13 @@
+# Research pipeline configuration
+arcana:
+  url: http://localhost:8000
+
+# Model for hypothesis extraction (Sonnet-tier)
+model: anthropic/claude-sonnet-4-5-20250514
+
+# Search terms for paper filtering (future use)
+search_terms:
+  - "LLM-generated text detection"
+  - "AI writing stylometry"
+  - "machine-generated text"
+  - "neural text detection"

@@ -173,3 +173,112 @@ def extract_hypotheses_from_paper(
     raw_text = response.choices[0].message.content
     parsed = _extract_json(raw_text)
     return parsed.get("hypotheses", [])
+
+
+DEFAULT_RESEARCH_CONFIG = {
+    "arcana": {"url": "http://localhost:8000"},
+    "model": "anthropic/claude-sonnet-4-5-20250514",
+    "search_terms": [],
+}
+
+
+def load_research_config(path: Path | None = None) -> dict:
+    """Load research config. Returns defaults if not found."""
+    if path is None:
+        path = RESEARCH_DIR / "config.yaml"
+    if not path.is_file():
+        return DEFAULT_RESEARCH_CONFIG.copy()
+    raw = yaml.safe_load(path.read_text())
+    if not isinstance(raw, dict):
+        return DEFAULT_RESEARCH_CONFIG.copy()
+    config = DEFAULT_RESEARCH_CONFIG.copy()
+    config.update(raw)
+    return config
+
+
+def research_fetch(
+    arcana_url: str,
+    research_dir: Path | None = None,
+) -> int:
+    """Fetch new papers from Arcana. Returns count of new papers."""
+    if research_dir is None:
+        research_dir = RESEARCH_DIR
+
+    index = load_paper_index(research_dir / "index.yaml")
+    existing_ids = set(index.papers.keys())
+
+    papers = fetch_papers_from_arcana(arcana_url, existing_ids=existing_ids)
+
+    for paper in papers:
+        index.papers[paper.paper_id] = paper
+        papers_dir = research_dir / "papers"
+        papers_dir.mkdir(parents=True, exist_ok=True)
+        paper_file = papers_dir / f"{paper.paper_id}.json"
+        paper_file.write_text(json.dumps(asdict(paper), indent=2))
+
+    save_paper_index(index, research_dir / "index.yaml")
+    return len(papers)
+
+
+def research_extract(
+    model: str,
+    research_dir: Path | None = None,
+    discovery_dir: Path | None = None,
+) -> tuple[int, int]:
+    """Run extraction on unprocessed papers. Returns (new_hypotheses, total_papers)."""
+    if research_dir is None:
+        research_dir = RESEARCH_DIR
+    if discovery_dir is None:
+        from stain.discovery import DISCOVERY_DIR
+        discovery_dir = DISCOVERY_DIR
+
+    index = load_paper_index(research_dir / "index.yaml")
+    unprocessed = [p for p in index.papers.values() if not p.extracted]
+
+    extractions_dir = research_dir / "extractions"
+    extractions_dir.mkdir(parents=True, exist_ok=True)
+
+    store = load_hypothesis_store(discovery_dir / "hypotheses.yaml")
+    total_new = 0
+
+    for paper in unprocessed:
+        raw_hypotheses = extract_hypotheses_from_paper(paper, model=model)
+
+        extraction_file = extractions_dir / f"{paper.paper_id}.json"
+        extraction_file.write_text(json.dumps({
+            "paper_id": paper.paper_id,
+            "title": paper.title,
+            "model": model,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "hypotheses": raw_hypotheses,
+        }, indent=2))
+
+        new, _ = store.merge(raw_hypotheses, f"research:{paper.paper_id}")
+        total_new += new
+
+        paper.extracted = True
+
+    save_paper_index(index, research_dir / "index.yaml")
+    save_hypothesis_store(store, discovery_dir / "hypotheses.yaml")
+
+    return total_new, len(unprocessed)
+
+
+def research_update(
+    research_dir: Path | None = None,
+    discovery_dir: Path | None = None,
+) -> dict:
+    """Full pipeline: fetch -> extract -> return stats."""
+    if research_dir is None:
+        research_dir = RESEARCH_DIR
+
+    config = load_research_config(research_dir / "config.yaml")
+    arcana_url = config.get("arcana", {}).get("url", "http://localhost:8000")
+    model = config.get("model", "anthropic/claude-sonnet-4-5-20250514")
+
+    fetched = research_fetch(arcana_url, research_dir=research_dir)
+    new_hyp, extracted = research_extract(
+        model=model, research_dir=research_dir, discovery_dir=discovery_dir,
+    )
+
+    return {"fetched": fetched, "extracted": extracted, "new_hypotheses": new_hyp}

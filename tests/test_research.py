@@ -16,6 +16,10 @@ from stain.research import (
     fetch_papers_from_arcana,
     extract_hypotheses_from_paper,
     _load_research_prompt,
+    research_fetch,
+    research_extract,
+    research_update,
+    load_research_config,
 )
 
 
@@ -170,3 +174,94 @@ class TestExtractHypotheses:
         with patch("stain.research.litellm.completion", return_value=mock_response):
             hypotheses = extract_hypotheses_from_paper(paper, model="test/model")
         assert hypotheses == []
+
+
+class TestLoadResearchConfig:
+    def test_load_config(self, tmp_path):
+        cfg_path = tmp_path / "config.yaml"
+        cfg_path.write_text("arcana:\n  url: http://test:8000\nmodel: test/model\n")
+        config = load_research_config(cfg_path)
+        assert config["arcana"]["url"] == "http://test:8000"
+
+    def test_load_missing_returns_defaults(self, tmp_path):
+        config = load_research_config(tmp_path / "nonexistent.yaml")
+        assert "arcana" in config
+        assert config["arcana"]["url"] == "http://localhost:8000"
+
+
+class TestResearchFetch:
+    def test_fetch_saves_to_index(self, tmp_path):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": "j1", "filename": "paper.pdf", "status": "complete", "doc_type": "pdf"},
+        ]
+        mock_detail = MagicMock()
+        mock_detail.status_code = 200
+        mock_detail.json.return_value = {
+            "id": "j1", "filename": "paper.pdf", "status": "complete",
+            "report": {"answer": "Paper content about LLM detection."},
+        }
+
+        with patch("stain.research.httpx.get") as mock_get:
+            mock_get.side_effect = [mock_response, mock_detail]
+            count = research_fetch(
+                arcana_url="http://test:8000",
+                research_dir=tmp_path,
+            )
+        assert count == 1
+        idx = load_paper_index(tmp_path / "index.yaml")
+        assert "j1" in idx.papers
+
+    def test_fetch_skips_already_fetched(self, tmp_path):
+        idx = PaperIndex()
+        idx.papers["j1"] = Paper(paper_id="j1", title="Old", source="arcana", text="old content")
+        save_paper_index(idx, tmp_path / "index.yaml")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {"id": "j1", "filename": "paper.pdf", "status": "complete", "doc_type": "pdf"},
+        ]
+
+        with patch("stain.research.httpx.get") as mock_get:
+            mock_get.side_effect = [mock_response]
+            count = research_fetch(arcana_url="http://test:8000", research_dir=tmp_path)
+        assert count == 0
+
+
+class TestResearchExtract:
+    def test_extract_marks_papers(self, tmp_path):
+        idx = PaperIndex()
+        idx.papers["j1"] = Paper(paper_id="j1", title="Test", source="arcana", text="Paper about detection.")
+        save_paper_index(idx, tmp_path / "index.yaml")
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = json.dumps({
+            "hypotheses": [{"pattern_name": "test_hyp", "description": "d", "confidence": 0.6, "suggested_detector": "New"}]
+        })
+
+        with patch("stain.research.litellm.completion", return_value=mock_llm):
+            new, total = research_extract(
+                model="test/model",
+                research_dir=tmp_path,
+                discovery_dir=tmp_path / "disc",
+            )
+        assert new >= 0
+        reloaded = load_paper_index(tmp_path / "index.yaml")
+        assert reloaded.papers["j1"].extracted is True
+
+    def test_extract_saves_extraction_json(self, tmp_path):
+        idx = PaperIndex()
+        idx.papers["j1"] = Paper(paper_id="j1", title="Test", source="arcana", text="Content.")
+        save_paper_index(idx, tmp_path / "index.yaml")
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = '{"hypotheses": []}'
+
+        with patch("stain.research.litellm.completion", return_value=mock_llm):
+            research_extract(model="test/model", research_dir=tmp_path, discovery_dir=tmp_path / "disc")
+        extractions = list((tmp_path / "extractions").glob("*.json"))
+        assert len(extractions) == 1
