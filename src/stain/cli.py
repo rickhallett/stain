@@ -814,3 +814,26 @@ def research_update_cmd(url: str | None, model: str | None):
         )
     console.print(f"  Processed {total} paper(s), {new_hyp} new hypothesis(es)")
     console.print("[green]Research update complete[/green]")
+
+
+# ---------------------------------------------------------------------------
+# MCP commands
+# ---------------------------------------------------------------------------
+
+@cli.group()
+def mcp():
+    """MCP server for editor integration."""
+    pass
+
+
+@mcp.command("serve")
+def mcp_serve():
+    """Start the MCP server over stdio."""
+    import asyncio
+    from stain.mcp_server import run_mcp_server
+
+    try:
+        asyncio.run(run_mcp_server())
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)
