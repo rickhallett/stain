@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import litellm
 import yaml
 
 
@@ -118,3 +119,79 @@ def save_discovery_run(result: DiscoveryResult, base_dir: Path | None = None) ->
     path = base_dir / f"{ts}.json"
     path.write_text(json.dumps(asdict(result), indent=2))
     return path
+
+
+def _load_discovery_prompt() -> str:
+    """Load the discovery agent system prompt."""
+    path = AGENTS_DIR / "discovery" / "prompt.md"
+    if not path.is_file():
+        raise DiscoveryError(f"Discovery prompt not found: {path}")
+    return path.read_text()
+
+
+def _format_detector_results(results: list) -> str:
+    """Format detector results for the discovery agent's context."""
+    lines = []
+    for r in results:
+        lines.append(f"### {r.detector_id}: {r.detector_name}")
+        lines.append(f"Score: {r.verdict.score:.2f} | Confidence: {r.verdict.confidence:.2f}")
+        lines.append(f"Summary: {r.verdict.summary}")
+        if r.verdict.annotations:
+            lines.append("Annotations:")
+            for a in r.verdict.annotations:
+                lines.append(f"  - [{a.pattern}] {a.explanation[:100]}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _build_pattern_catalogue() -> str:
+    """Build text summary of all patterns across all detectors."""
+    from stain.registry import discover_detectors
+    detectors = discover_detectors(enabled_only=False)
+    lines = []
+    for did, info in sorted(detectors.items()):
+        lines.append(f"### {did}: {info.name}")
+        for p in info.patterns:
+            lines.append(f"  - {p.name}: {p.description}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def run_discovery(
+    input_text: str,
+    detector_results: list,
+    model: str,
+    pattern_catalogue: str,
+) -> list[dict]:
+    """Run discovery agent against text + detector output. Returns raw hypotheses."""
+    from stain.detector import _extract_json
+
+    prompt = _load_discovery_prompt()
+
+    detector_summary = _format_detector_results(detector_results)
+
+    user_message = (
+        "## Original Text\n\n"
+        f"{input_text}\n\n"
+        "## Existing Detector Results\n\n"
+        f"{detector_summary}\n\n"
+        "## Current Pattern Catalogue\n\n"
+        f"{pattern_catalogue}\n\n"
+        "---\n\n"
+        "Analyse the text above. Find patterns the existing detectors missed. "
+        "Return your hypotheses as structured JSON."
+    )
+
+    response = litellm.completion(
+        model=model,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_message},
+        ],
+        max_tokens=2048,
+        timeout=60,
+    )
+
+    raw_text = response.choices[0].message.content
+    parsed = _extract_json(raw_text)
+    return parsed.get("hypotheses", [])
