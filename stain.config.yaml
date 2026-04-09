@@ -57,3 +57,23 @@ corpus:
 
 results:
   path: results/
+
+audit:
+  enabled: true
+  verbosity: hashes  # full | hashes | off
+  path: .stain/audit
+
+validation:
+  enabled: false  # Enable when 3rd model family is benchmarked
+  min_models: 2
+  models:
+    primary: cerebras/qwen-3-235b-a22b-instruct-2507
+    validators:
+      - groq/llama-3.3-70b-versatile
+  require_for:
+    - detector_benchmark
+    - discovery_hypothesis
+    - corpus_label
+  skip_for:
+    - interactive_analyse
+    - corpus_generate
