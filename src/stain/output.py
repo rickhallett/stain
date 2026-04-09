@@ -14,12 +14,16 @@ class OutputMode(str, Enum):
     JSON = "json"
     PLAIN = "plain"
     SCORE = "score"
+    HTML = "html"
+    SERVE = "serve"
 
 
 def detect_mode(
     json_flag: bool = False,
     plain_flag: bool = False,
     score_flag: bool = False,
+    html_flag: bool = False,
+    serve_flag: bool = False,
 ) -> OutputMode:
     """Determine output mode from flags or TTY auto-detection.
 
@@ -32,6 +36,10 @@ def detect_mode(
         return OutputMode.PLAIN
     if score_flag:
         return OutputMode.SCORE
+    if html_flag:
+        return OutputMode.HTML
+    if serve_flag:
+        return OutputMode.SERVE
     if sys.stdout.isatty():
         return OutputMode.RICH
     return OutputMode.JSON

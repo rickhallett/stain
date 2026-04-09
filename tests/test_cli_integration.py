@@ -282,6 +282,17 @@ class TestResearchFetchCli:
             assert result.exit_code == 0
 
 
+class TestAnalyseHtml:
+    def test_html_flag(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Some text to analyse and output as HTML report.")
+        with patch("stain.cli.analyse", return_value=_mock_analyse()):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["analyse", str(f), "--html"])
+            assert "<!DOCTYPE html>" in result.output
+            assert "0.650" in result.output or "0.65" in result.output
+
+
 class TestInit:
     def test_init_creates_config(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))

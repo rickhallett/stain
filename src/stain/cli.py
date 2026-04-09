@@ -176,6 +176,8 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
 @click.option("--json", "output_json", is_flag=True, help="JSON output")
 @click.option("--plain", is_flag=True, help="One-liner output")
 @click.option("--score", "score_only", is_flag=True, help="Score only")
+@click.option("--html", "output_html", is_flag=True, help="HTML report output")
+@click.option("--serve", "serve", is_flag=True, help="Serve HTML report in browser")
 @click.option("--threshold", "-t", default=0.55, type=float, help="Exit code threshold (default: 0.55)")
 @click.option("--config", "-c", "config_path", default=None, type=click.Path(exists=True))
 def analyse_cmd(
@@ -183,6 +185,8 @@ def analyse_cmd(
     output_json: bool,
     plain: bool,
     score_only: bool,
+    output_html: bool,
+    serve: bool,
     threshold: float,
     config_path: str | None,
 ):
@@ -202,7 +206,8 @@ def analyse_cmd(
     from stain.output import OutputMode, detect_mode, format_json, format_plain, format_score
 
     config = load_config(Path(config_path) if config_path else None)
-    mode = detect_mode(json_flag=output_json, plain_flag=plain, score_flag=score_only)
+    mode = detect_mode(json_flag=output_json, plain_flag=plain, score_flag=score_only,
+                       html_flag=output_html, serve_flag=serve)
 
     # Resolve inputs
     try:
@@ -243,6 +248,19 @@ def analyse_cmd(
         elif mode == OutputMode.SCORE:
             prefix = "" if single else f"{item.source}: "
             click.echo(f"{prefix}{format_score(result)}")
+        elif mode == OutputMode.HTML:
+            from stain.html import render_html_report
+            click.echo(render_html_report(result, item.text))
+        elif mode == OutputMode.SERVE:
+            from stain.html import render_html_report
+            import tempfile
+            import webbrowser
+            html_content = render_html_report(result, item.text)
+            tmpdir = tempfile.mkdtemp()
+            report_path = Path(tmpdir) / "stain-report.html"
+            report_path.write_text(html_content)
+            console.print(f"[green]Report: file://{report_path}[/green]")
+            webbrowser.open(f"file://{report_path}")
         elif mode == OutputMode.RICH:
             _render_rich(result, item.text, item.source)
 
