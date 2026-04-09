@@ -87,15 +87,75 @@ class TestHypothesisStore:
 
     def test_merge_updates_confidence_to_max(self):
         store = HypothesisStore()
-        store.merge([{"pattern_name": "p", "description": "d", "confidence": 0.5, "suggested_detector": "New"}], "f1.txt")
-        store.merge([{"pattern_name": "p", "description": "d", "confidence": 0.8, "suggested_detector": "New"}], "f2.txt")
-        assert store.hypotheses["p"].confidence == 0.8
+        store.merge([{"pattern_name": "pat_conf", "description": "d", "confidence": 0.5, "suggested_detector": "New"}], "f1.txt")
+        store.merge([{"pattern_name": "pat_conf", "description": "d", "confidence": 0.8, "suggested_detector": "New"}], "f2.txt")
+        assert store.hypotheses["pat_conf"].confidence == 0.8
 
     def test_merge_does_not_lower_confidence(self):
         store = HypothesisStore()
-        store.merge([{"pattern_name": "p", "description": "d", "confidence": 0.9, "suggested_detector": "New"}], "f1.txt")
-        store.merge([{"pattern_name": "p", "description": "d", "confidence": 0.3, "suggested_detector": "New"}], "f2.txt")
-        assert store.hypotheses["p"].confidence == 0.9
+        store.merge([{"pattern_name": "pat_keep", "description": "d", "confidence": 0.9, "suggested_detector": "New"}], "f1.txt")
+        store.merge([{"pattern_name": "pat_keep", "description": "d", "confidence": 0.3, "suggested_detector": "New"}], "f2.txt")
+        assert store.hypotheses["pat_keep"].confidence == 0.9
+
+
+class TestMergeValidation:
+    def test_malformed_hypothesis_skipped(self):
+        store = HypothesisStore()
+        raw = [
+            "not a dict",
+            {"no_pattern_name_key": True},
+            {"pattern_name": "valid_one", "description": "d", "confidence": 0.5, "suggested_detector": "New"},
+        ]
+        new, updated = store.merge(raw, "f.txt")
+        assert new == 1
+        assert "valid_one" in store.hypotheses
+
+    def test_path_traversal_name_rejected(self):
+        store = HypothesisStore()
+        raw = [{"pattern_name": "../../../etc/passwd", "description": "d", "confidence": 0.5, "suggested_detector": "New"}]
+        new, _ = store.merge(raw, "f.txt")
+        assert new == 0
+        assert len(store.hypotheses) == 0
+
+    def test_name_with_dots_rejected(self):
+        store = HypothesisStore()
+        raw = [{"pattern_name": "foo.bar", "description": "d", "confidence": 0.5, "suggested_detector": "New"}]
+        new, _ = store.merge(raw, "f.txt")
+        assert new == 0
+
+    def test_uppercase_name_rejected(self):
+        store = HypothesisStore()
+        raw = [{"pattern_name": "FooBar", "description": "d", "confidence": 0.5, "suggested_detector": "New"}]
+        new, _ = store.merge(raw, "f.txt")
+        assert new == 0
+
+    def test_empty_name_rejected(self):
+        store = HypothesisStore()
+        raw = [{"pattern_name": "", "description": "d", "confidence": 0.5, "suggested_detector": "New"}]
+        new, _ = store.merge(raw, "f.txt")
+        assert new == 0
+
+
+class TestScaffoldValidation:
+    def test_scaffold_path_traversal_raises(self, tmp_path):
+        store = HypothesisStore()
+        # Bypass merge validation to test scaffold's own guard
+        store.hypotheses["../evil"] = Hypothesis(
+            pattern_name="../evil", description="d", confidence=0.5, suggested_detector="New",
+        )
+        save_hypothesis_store(store, tmp_path / "h.yaml")
+        with pytest.raises(DiscoveryError, match="Invalid pattern name"):
+            scaffold_detector("../evil", store=store, store_path=tmp_path / "h.yaml", detectors_dir=tmp_path)
+
+
+class TestPromoteValidation:
+    def test_promote_ambiguous_raises(self, tmp_path):
+        (tmp_path / "D7_first").mkdir()
+        (tmp_path / "D7_first" / "detector.yaml").write_text("id: D7\nname: A\nenabled: false\n")
+        (tmp_path / "D7_second").mkdir()
+        (tmp_path / "D7_second" / "detector.yaml").write_text("id: D7\nname: B\nenabled: false\n")
+        with pytest.raises(DiscoveryError, match="Ambiguous"):
+            promote_detector("D7", detectors_dir=tmp_path)
 
 
 class TestStoreIO:

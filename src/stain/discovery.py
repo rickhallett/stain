@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +16,11 @@ import yaml
 
 DISCOVERY_DIR = Path("discovery")
 AGENTS_DIR = Path("agents")
+
+# Pattern names must be safe for filesystem use — lowercase alphanumeric + underscores only
+VALID_PATTERN_NAME = re.compile(r"^[a-z][a-z0-9_]{1,60}$")
+
+logger = logging.getLogger(__name__)
 
 
 def analyse(text: str, config: dict | None = None, **kwargs):
@@ -66,7 +73,13 @@ class HypothesisStore:
         updated_count = 0
 
         for h in raw_hypotheses:
+            if not isinstance(h, dict) or "pattern_name" not in h:
+                logger.warning(f"Skipping malformed hypothesis: {h!r}")
+                continue
             name = h["pattern_name"]
+            if not isinstance(name, str) or not VALID_PATTERN_NAME.match(name):
+                logger.warning(f"Skipping hypothesis with invalid name: {name!r}")
+                continue
             if name in self.hypotheses:
                 existing = self.hypotheses[name]
                 existing.occurrence_count += 1
@@ -294,6 +307,8 @@ def scaffold_detector(
     if store is None:
         store = load_hypothesis_store(store_path)
 
+    if not VALID_PATTERN_NAME.match(pattern_name):
+        raise DiscoveryError(f"Invalid pattern name: {pattern_name!r}. Must match [a-z][a-z0-9_]{{1,60}}.")
     if pattern_name not in store.hypotheses:
         raise DiscoveryError(f"Hypothesis not found: {pattern_name}")
 
@@ -367,6 +382,9 @@ def promote_detector(detector_id: str, detectors_dir: Path | None = None) -> Non
     matches = [d for d in detectors_dir.iterdir() if d.is_dir() and d.name.startswith(f"{detector_id}_")]
     if not matches:
         raise DiscoveryError(f"Detector directory not found for {detector_id}")
+    if len(matches) > 1:
+        names = [m.name for m in matches]
+        raise DiscoveryError(f"Ambiguous: multiple directories match {detector_id}: {names}")
 
     yaml_path = matches[0] / "detector.yaml"
     raw = yaml.safe_load(yaml_path.read_text())
