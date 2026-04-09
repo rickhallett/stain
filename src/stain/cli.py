@@ -52,6 +52,35 @@ def cli():
 
 
 @cli.command()
+def init():
+    """Initialize Stain config in ~/.config/stain/."""
+    import yaml as _yaml
+    from stain.config import DEFAULT_CONFIG
+
+    config_dir = Path.home() / ".config" / "stain"
+    config_path = config_dir / "config.yaml"
+
+    if config_path.is_file():
+        console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
+        console.print("[dim]Delete it first if you want to reinitialize.[/dim]")
+        return
+
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(_yaml.dump(DEFAULT_CONFIG, default_flow_style=False, sort_keys=False))
+
+    api_key = click.prompt(
+        "Cerebras API key (or Enter to skip)", default="", show_default=False,
+    )
+    if api_key:
+        env_path = config_dir / ".env"
+        env_path.write_text(f"CEREBRAS_API_KEY={api_key}\n")
+        console.print(f"  [green]API key saved to {env_path}[/green]")
+
+    console.print(f"\n[green]Stain initialized at {config_dir}/[/green]")
+    console.print("[dim]Run 'stain analyse <file>' to get started.[/dim]")
+
+
+@cli.command()
 @click.option("--detector", "-d", default=None, help="Run a single detector (e.g. D1)")
 @click.option("--input", "-i", "input_path", default=None, type=click.Path(exists=True), help="Analyse a single file")
 @click.option("--config", "-c", "config_path", default=None, type=click.Path(exists=True), help="Config file path")
