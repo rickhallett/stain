@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from pathlib import Path
 
 import litellm
 from dotenv import load_dotenv
 
+from stain.audit import AuditEntry, AuditLogger, hash_content
 from stain.models import DetectorResult, Meta, Verdict
+from stain.registry import DETECTORS_DIR, discover_detectors
 
 
 # Load .env for API keys (CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
@@ -24,26 +25,6 @@ load_dotenv()
 # Suppress litellm's noisy logging by default
 litellm.suppress_debug_info = True
 
-DETECTORS_DIR = Path("detectors")
-
-DETECTOR_DIR_MAP = {
-    "D1": "D1_rhetorical_pattern",
-    "D2": "D2_sentence_rhythm",
-    "D3": "D3_lexical_diversity",
-    "D4": "D4_hedging_density",
-    "D5": "D5_structural_predictability",
-    "D6": "D6_semantic_emptiness",
-}
-
-DETECTOR_NAMES = {
-    "D1": "Rhetorical Pattern",
-    "D2": "Sentence Rhythm",
-    "D3": "Lexical Diversity",
-    "D4": "Hedging Density",
-    "D5": "Structural Predictability",
-    "D6": "Semantic Emptiness",
-}
-
 
 def _hash_prompt(prompt_text: str) -> str:
     """SHA256 hash of the prompt for versioning."""
@@ -51,16 +32,11 @@ def _hash_prompt(prompt_text: str) -> str:
 
 
 def _load_prompt(detector_id: str) -> str:
-    """Load the system prompt for a detector."""
-    dirname = DETECTOR_DIR_MAP.get(detector_id)
-    if not dirname:
-        raise ValueError(f"Unknown detector: {detector_id}")
-
-    prompt_path = DETECTORS_DIR / dirname / "prompt.md"
-    if not prompt_path.exists():
-        raise FileNotFoundError(f"Prompt not found: {prompt_path}")
-
-    return prompt_path.read_text()
+    """Load the system prompt for a detector via registry."""
+    detectors = discover_detectors(enabled_only=False)
+    if detector_id not in detectors:
+        raise ValueError(f"Detector {detector_id} not found in {DETECTORS_DIR}")
+    return detectors[detector_id].prompt
 
 
 def _extract_json(raw_text: str) -> dict:
@@ -270,6 +246,7 @@ def run_detector(
     detector_id: str,
     input_text: str,
     model: str = "cerebras/qwen-3-235b-a22b-instruct-2507",
+    audit_logger: AuditLogger | None = None,
 ) -> DetectorResult:
     """Run a single detector against input text and return structured result.
 
@@ -278,10 +255,16 @@ def run_detector(
         input_text: The text to analyse.
         model: litellm model string, e.g. "groq/llama-3.3-70b-versatile",
                "anthropic/claude-haiku-4-5-20251001".
+        audit_logger: Optional audit logger for recording the interaction.
     """
-    prompt_text = _load_prompt(detector_id)
-    prompt_hash = _hash_prompt(prompt_text)
-    detector_name = DETECTOR_NAMES.get(detector_id, detector_id)
+    detectors = discover_detectors(enabled_only=False)
+    if detector_id not in detectors:
+        raise ValueError(f"Detector {detector_id} not found")
+
+    info = detectors[detector_id]
+    prompt_text = info.prompt
+    prompt_hash = info.prompt_hash
+    detector_name = info.name
 
     start = time.monotonic()
     response = litellm.completion(
@@ -316,10 +299,29 @@ def run_detector(
     # litellm normalises usage across providers
     usage = response.usage
 
+    if audit_logger:
+        audit_logger.log(AuditEntry(
+            operation="detector_call",
+            detector_id=detector_id,
+            model=model,
+            prompt_hash=prompt_hash,
+            prompt_version=info.version,
+            input_hash=hash_content(input_text),
+            input_length_chars=len(input_text),
+            response_hash=hash_content(raw_text),
+            parsed_score=verdict.score,
+            annotations_count=len(verdict.annotations),
+            annotations_valid=valid,
+            annotations_invalid=invalid,
+            latency_ms=latency_ms,
+            tokens_in=usage.prompt_tokens,
+            tokens_out=usage.completion_tokens,
+        ))
+
     return DetectorResult(
         detector_id=detector_id,
         detector_name=detector_name,
-        version="0.1.0",
+        version=info.version,
         prompt_hash=prompt_hash,
         verdict=verdict,
         meta=Meta(

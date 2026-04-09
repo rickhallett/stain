@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from stain.registry import discover_detectors
+
 
 DEFAULT_CONFIG_PATH = Path("stain.config.yaml")
 
@@ -31,3 +33,8 @@ def get_enabled_detectors(config: dict[str, Any]) -> list[str]:
 def get_detector_weight(config: dict[str, Any], detector_id: str) -> float:
     """Get weight for a detector."""
     return config.get("detectors", {}).get(detector_id, {}).get("weight", 1.0)
+
+
+def get_enabled_detectors_from_registry() -> list[str]:
+    """Return enabled detector IDs from filesystem registry."""
+    return list(discover_detectors(enabled_only=True).keys())

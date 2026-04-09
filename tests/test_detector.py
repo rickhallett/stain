@@ -180,5 +180,5 @@ class TestLoadPrompt:
         assert "correctio" in prompt.lower() or "Correctio" in prompt
 
     def test_unknown_detector_raises(self):
-        with pytest.raises(ValueError, match="Unknown detector"):
+        with pytest.raises(ValueError, match="not found"):
             _load_prompt("D99")
