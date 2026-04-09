@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import litellm
 import yaml
 
 from stain.discovery import (
@@ -18,6 +19,7 @@ from stain.discovery import (
     save_hypothesis_store,
     VALID_PATTERN_NAME,
 )
+from stain.detector import _extract_json
 
 
 logger = logging.getLogger(__name__)
@@ -135,3 +137,39 @@ def fetch_papers_from_arcana(
         papers.append(paper)
 
     return papers
+
+
+def _load_research_prompt() -> str:
+    """Load the research extraction agent system prompt."""
+    path = AGENTS_DIR / "research_extract" / "prompt.md"
+    if not path.is_file():
+        raise ResearchError(f"Research extraction prompt not found: {path}")
+    return path.read_text()
+
+
+def extract_hypotheses_from_paper(
+    paper: Paper,
+    model: str,
+) -> list[dict]:
+    """Run extraction agent against a paper. Returns raw hypotheses."""
+    prompt = _load_research_prompt()
+
+    user_message = (
+        f"## Paper: {paper.title}\n\n"
+        f"Source: {paper.source} ({paper.paper_id})\n\n"
+        f"---\n\n{paper.text}"
+    )
+
+    response = litellm.completion(
+        model=model,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_message},
+        ],
+        max_tokens=2048,
+        timeout=60,
+    )
+
+    raw_text = response.choices[0].message.content
+    parsed = _extract_json(raw_text)
+    return parsed.get("hypotheses", [])

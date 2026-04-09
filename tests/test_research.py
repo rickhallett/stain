@@ -14,6 +14,8 @@ from stain.research import (
     load_paper_index,
     save_paper_index,
     fetch_papers_from_arcana,
+    extract_hypotheses_from_paper,
+    _load_research_prompt,
 )
 
 
@@ -123,3 +125,48 @@ class TestFetchFromArcana:
         with patch("stain.research.httpx.get", side_effect=Exception("Connection refused")):
             with pytest.raises(ResearchError, match="connect"):
                 fetch_papers_from_arcana("http://localhost:9999")
+
+
+class TestLoadResearchPrompt:
+    def test_load_prompt(self):
+        prompt = _load_research_prompt()
+        assert "Research Extraction" in prompt
+        assert "hypotheses" in prompt
+
+    def test_missing_prompt_raises(self):
+        with patch("stain.research.AGENTS_DIR", Path("/nonexistent")):
+            with pytest.raises(ResearchError, match="not found"):
+                _load_research_prompt()
+
+
+class TestExtractHypotheses:
+    def test_extract_returns_hypotheses(self):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "hypotheses": [{
+                "pattern_name": "syntactic_entropy",
+                "description": "LLMs produce lower syntactic entropy than humans",
+                "examples_found": ["The paper demonstrates..."],
+                "confidence": 0.8,
+                "suggested_detector": "New detector",
+            }]
+        })
+
+        paper = Paper(paper_id="j1", title="Test", source="arcana", text="Paper about LLM detection...")
+
+        with patch("stain.research.litellm.completion", return_value=mock_response):
+            hypotheses = extract_hypotheses_from_paper(paper, model="test/model")
+        assert len(hypotheses) == 1
+        assert hypotheses[0]["pattern_name"] == "syntactic_entropy"
+
+    def test_extract_empty_paper(self):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"hypotheses": []}'
+
+        paper = Paper(paper_id="j2", title="Unrelated", source="arcana", text="Not about LLM detection")
+
+        with patch("stain.research.litellm.completion", return_value=mock_response):
+            hypotheses = extract_hypotheses_from_paper(paper, model="test/model")
+        assert hypotheses == []
