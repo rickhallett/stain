@@ -1,5 +1,7 @@
 """Tests for input resolution — files, stdin, URLs, globs."""
 
+import io
+
 import pytest
 from pathlib import Path
 
@@ -54,3 +56,29 @@ class TestNoInput:
     def test_no_sources_no_stdin_raises(self):
         with pytest.raises(InputError, match="No input"):
             resolve_inputs(())
+
+
+class TestStdin:
+    def test_read_stdin_dash(self):
+        stream = io.StringIO("piped content")
+        items = resolve_inputs(("-",), stdin_stream=stream)
+        assert len(items) == 1
+        assert items[0].text == "piped content"
+        assert items[0].source == "<stdin>"
+        assert items[0].source_type == SourceType.STDIN
+
+    def test_implicit_stdin_when_no_sources(self):
+        stream = io.StringIO("implicit piped")
+        items = resolve_inputs((), stdin_stream=stream)
+        assert len(items) == 1
+        assert items[0].text == "implicit piped"
+
+    def test_empty_stdin_raises(self):
+        stream = io.StringIO("")
+        with pytest.raises(InputError, match="empty"):
+            resolve_inputs(("-",), stdin_stream=stream)
+
+    def test_stdin_whitespace_only_raises(self):
+        stream = io.StringIO("   \n\n  ")
+        with pytest.raises(InputError, match="empty"):
+            resolve_inputs(("-",), stdin_stream=stream)
