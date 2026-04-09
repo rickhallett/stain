@@ -1,0 +1,17 @@
+id: D6
+name: "Semantic Emptiness"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Identifies phrases and sentences that occupy syntactic space without adding meaning. Broadening closers, filler transitions, restated premises, empty emphasis, circular conclusions."
+patterns:
+  - name: broadening_closer
+    description: "Final sentences that widen scope without adding: 'and that's what makes this so important'"
+  - name: filler_transition
+    description: "Transition phrases that add no information: 'With that said', 'Moving on'"
+  - name: restated_premise
+    description: "Repeating an earlier point in different words without advancing the argument"
+  - name: empty_emphasis
+    description: "Intensifiers that add no meaning: 'truly', 'really', 'absolutely', 'fundamentally'"
+  - name: circular_conclusion
+    description: "Conclusion that merely restates the introduction"
