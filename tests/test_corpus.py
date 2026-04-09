@@ -270,3 +270,25 @@ class TestCorpusLabel:
                 source="test",
                 domain="blog",
             )
+
+
+class TestTierResolution:
+    def test_resolve_corpus_dirs_gold(self, tmp_path):
+        from stain.benchmark import resolve_corpus_dirs
+        (tmp_path / "gold" / "known_human").mkdir(parents=True)
+        (tmp_path / "gold" / "known_llm").mkdir(parents=True)
+        dirs = resolve_corpus_dirs("gold", str(tmp_path))
+        assert len(dirs) == 2
+        assert any("known_human" in d for d in dirs)
+        assert any("known_llm" in d for d in dirs)
+
+    def test_resolve_corpus_dirs_explicit(self):
+        from stain.benchmark import resolve_corpus_dirs
+        dirs = resolve_corpus_dirs(None, "corpus", ["corpus/gold/known_human", "corpus/gold/known_llm"])
+        assert dirs == ["corpus/gold/known_human", "corpus/gold/known_llm"]
+
+    def test_resolve_corpus_dirs_default(self):
+        from stain.benchmark import resolve_corpus_dirs
+        dirs = resolve_corpus_dirs(None, "corpus")
+        assert "corpus/gold/known_human" in dirs
+        assert "corpus/gold/known_llm" in dirs

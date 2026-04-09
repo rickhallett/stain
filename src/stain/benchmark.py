@@ -60,11 +60,17 @@ class BenchmarkConfig:
     def from_yaml(cls, path: Path) -> "BenchmarkConfig":
         with open(path) as f:
             raw = yaml.safe_load(f)
+        corpus_tier = raw.get("corpus_tier")
+        corpus_dirs = resolve_corpus_dirs(
+            tier=corpus_tier,
+            corpus_root=raw.get("corpus_root", "corpus"),
+            explicit_dirs=raw.get("corpus_dirs"),
+        )
         return cls(
             name=raw["name"],
             model=raw["model"],
             detectors=raw.get("detectors", ["D1"]),
-            corpus_dirs=raw.get("corpus_dirs", ["corpus/known_human", "corpus/known_llm"]),
+            corpus_dirs=corpus_dirs,
             max_retries=raw.get("max_retries", 3),
             retry_delay=raw.get("retry_delay", 5.0),
             delay_between=raw.get("delay_between", 0.5),
@@ -106,6 +112,28 @@ class BenchmarkRun:
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
+
+def resolve_corpus_dirs(
+    tier: str | None,
+    corpus_root: str = "corpus",
+    explicit_dirs: list[str] | None = None,
+) -> list[str]:
+    """Resolve corpus directories from tier name or explicit paths.
+
+    If explicit_dirs is set, returns those directly.
+    If tier is set, returns [corpus_root/tier/known_human, corpus_root/tier/known_llm].
+    Otherwise defaults to gold tier.
+    """
+    if explicit_dirs:
+        return explicit_dirs
+    if tier:
+        root = Path(corpus_root)
+        return [
+            str(root / tier / "known_human"),
+            str(root / tier / "known_llm"),
+        ]
+    return [f"{corpus_root}/gold/known_human", f"{corpus_root}/gold/known_llm"]
+
 
 def _collect_files(corpus_dirs: list[str]) -> list[Path]:
     files = []
