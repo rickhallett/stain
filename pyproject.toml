@@ -28,6 +28,9 @@ packages = ["src/stain"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "pandas>=2.0",
 ]
 
 [tool.pytest.ini_options]

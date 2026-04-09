@@ -345,9 +345,23 @@ arXiv / Semantic Scholar API → FETCH + FILTER
 research/
 ├── papers/{arxiv_id}.json       # Metadata
 ├── extractions/{arxiv_id}.json  # Extracted hypotheses
+├── notebooks/                   # Jupyter research notes (from Ring 1 onward)
+│   ├── 001_benchmark_analysis.ipynb
+│   ├── 002_detector_correlation.ipynb
+│   └── ...
 ├── index.yaml                   # Master index
 └── config.yaml                  # Search terms, sources
 ```
+
+### Research Notebooks
+
+Jupyter notebooks serve as living research documents from the start. Each notebook combines narrative, code, and visualisation in a format that can be exported to blog posts (nbconvert → markdown) or presentations (RISE / reveal.js).
+
+Notebook conventions:
+- Numbered prefix for ordering: `001_`, `002_`, etc.
+- Self-contained: each notebook re-runs against current data
+- Git-tracked alongside the code they analyse
+- Used for: benchmark analysis, detector evaluation, corpus studies, discovery findings, paper reviews
 
 Search strategy: "LLM-generated text detection", "AI writing stylometry", etc. Filter by post-2022, cited ≥5, contains methodology.
 

@@ -126,3 +126,135 @@
     - benchmarks/groq_llama8b.yaml
     - src/stain/benchmark.py
     - src/stain/cli.py
+
+- id: "005"
+  date: "2026-04-09"
+  title: "Roadmap strategy: Concentric Rings"
+  type: decision
+  context: |
+    Phase 1 POC proved the thesis (100% accuracy, 0.371 separation, sub-1s).
+    Needed a roadmap from POC to battle-hardened tool. Evaluated three
+    approaches: Depth First (perfect detectors then extend), Research First
+    (let literature inform detector design), Concentric Rings (harden core,
+    extend outward).
+  decision: |
+    Concentric Rings. Six rings, each independently valuable:
+    1. Complete Detection Engine (D2-D6 + plugin architecture)
+    2. Input & Output Hardening (stdin, URL, output modes, exit codes)
+    3. Corpus Infrastructure (gold/bulk stratification, generation tooling)
+    4. Discovery Pipeline (meta-LLM analysis of detector blind spots)
+    5. Research Pipeline (arXiv ingestion, hypothesis extraction)
+    6. Distribution & Visualization (PyPI, MCP server, HTML reports)
+  rationale:
+    - "Each ring ships usable improvements — no disappearing into research holes"
+    - "Plugin system arrives in Ring 1, so everything after dogfoods extensibility"
+    - "Research pipeline (Ring 5) lands after corpus infra (Ring 3) exists to test hypotheses"
+    - "Rejected Research First because it risks Option C procrastination"
+    - "Rejected Depth First because literature might invalidate detector designs"
+  artifacts:
+    - docs/superpowers/specs/2026-04-09-stain-roadmap-design.md
+
+- id: "006"
+  date: "2026-04-09"
+  title: "Personal tool first, UX later"
+  type: decision
+  context: |
+    Stain could target the operator (Kai) or external users (writers,
+    marketers). The answer determines whether we prioritise terminal
+    ergonomics or onboarding UX.
+  decision: |
+    Build for the operator first. Primary use case: auditing other people's
+    text (clients, contractors, LinkedIn posts). Quantify what the slopodar
+    detects intuitively. UX for external users deferred to Ring 6.
+  rationale:
+    - "Don't build onboarding for a tool that hasn't earned its operator's trust"
+    - "Terminal-native, pipe-friendly, scriptable — optimise for speed of audit"
+    - "All input paths: file, stdin, URL — whatever's fastest in the moment"
+  artifacts:
+    - docs/superpowers/specs/2026-04-09-stain-roadmap-design.md
+
+- id: "007"
+  date: "2026-04-09"
+  title: "Human-in-the-loop for detector promotion"
+  type: decision
+  context: |
+    Discovery and research pipelines will generate candidate detectors.
+    Question: how autonomous should the promotion process be?
+  decision: |
+    Machine proposes, operator approves. Nothing enters the active detector
+    suite without sign-off. Discovery agents surface hypotheses; operator
+    reviews, approves, and triggers benchmark. Promotion only after ≥0.30
+    separation on gold corpus.
+  rationale:
+    - "The slopodar is the ultimate labelling function — it stays sovereign"
+    - "Autonomous promotion risks compounding model biases into the tool"
+    - "Review queue accumulates evidence over time — frequency strengthens signal"
+  artifacts:
+    - docs/superpowers/specs/2026-04-09-stain-roadmap-design.md
+
+- id: "008"
+  date: "2026-04-09"
+  title: "Stratified corpus: gold + bulk"
+  type: decision
+  context: |
+    23 labelled samples is too thin for 6+ detectors. Need to scale the
+    corpus without sacrificing ground-truth quality.
+  decision: |
+    Two-tier corpus. Gold tier: hand-curated, operator-labelled, forensically
+    clean. Bulk tier: machine-generated synthetic LLM samples (varied model,
+    temp, domain) and scraped pre-2020 human text, spot-checked. Gold is the
+    final exam — if a detector passes bulk but fails gold, it doesn't ship.
+  rationale:
+    - "Automated generation for statistical confidence (large n)"
+    - "Hand-curation for ground truth (high signal, no contamination)"
+    - "Separate tiers prevent bulk noise from polluting promotion decisions"
+  artifacts:
+    - docs/superpowers/specs/2026-04-09-stain-roadmap-design.md
+
+- id: "009"
+  date: "2026-04-09"
+  title: "Three cross-cutting concerns: prompts, audit, multi-model"
+  type: decision
+  context: |
+    Three infrastructure requirements emerged during roadmap design that
+    apply across all rings and must be built from Ring 1 onward.
+  decision: |
+    1. Prompt Registry: zero hardcoded prompts. Every LLM call loads from
+       versioned prompt.md files. Generic loader, no detector/agent-specific maps.
+    2. Audit Logging: every req/res pair logged immutably. Full provenance from
+       input to verdict. Enables bias detection, regression hunting, cost tracking.
+    3. Multi-Model Validation: promotion decisions validated across ≥2 model
+       families (different training lineages). Unanimous for promotions, majority
+       for hypotheses, divergence report for research. Burns out mono-cultural
+       bias before it bakes into research artifacts.
+  rationale:
+    - "Prompts are IP — they need versioning, hashing, and history from day one"
+    - "Without audit logs, can't diagnose systematic bias or catch regressions"
+    - "Single-model analysis risks model priors becoming tool assumptions"
+    - "Instrumenting divergence now gives data to answer whether it matters later"
+  artifacts:
+    - docs/superpowers/specs/2026-04-09-stain-roadmap-design.md
+    - stain.config.yaml
+
+- id: "010"
+  date: "2026-04-09"
+  title: "Jupyter notebooks for research documentation"
+  type: decision
+  context: |
+    Stain is a research instrument as much as a tool. Findings, benchmark
+    analyses, detector evaluations, and corpus studies need to be documented
+    in a format that combines narrative, code, and visualisation — and that
+    can be repurposed into blog posts and presentations later.
+  decision: |
+    Add a research/ notebooks directory from the start. Jupyter notebooks
+    (.ipynb) for benchmark analysis, detector evaluation, corpus studies,
+    and discovery findings. Each notebook is a self-contained research note
+    that can be exported to blog posts or presentation decks.
+  rationale:
+    - "Notebooks combine prose + code + charts — natural format for research notes"
+    - "nbconvert to markdown/HTML makes blog posts trivial"
+    - "RISE or reveal.js export makes presentations from notebooks"
+    - "Living documents that re-run against latest data"
+    - "Git-tracked alongside the code they analyse"
+  artifacts:
+    - research/notebooks/
