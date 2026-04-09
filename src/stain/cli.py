@@ -72,10 +72,8 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
     if input_path:
         files = [Path(input_path)]
     else:
-        corpus_dirs = [
-            Path(config.get("corpus", {}).get("known_llm", "corpus/known_llm")),
-            Path(config.get("corpus", {}).get("known_human", "corpus/known_human")),
-        ]
+        gold_dir = Path(config.get("corpus", {}).get("gold", "corpus/gold"))
+        corpus_dirs = [gold_dir / "known_human", gold_dir / "known_llm"]
         files = []
         for d in corpus_dirs:
             if d.exists():

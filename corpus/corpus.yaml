@@ -1,0 +1,10 @@
+tiers:
+  gold:
+    path: gold/
+    description: Hand-curated, operator-labelled samples. The final exam.
+  bulk:
+    path: bulk/
+    description: Machine-generated, spot-checked samples.
+ambiguous:
+  path: ambiguous/
+  description: Unlabelled samples awaiting classification.
