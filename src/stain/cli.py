@@ -15,10 +15,10 @@ from rich.text import Text
 
 from stain import __version__
 from stain.config import get_enabled_detectors, load_config
-from stain.detector import run_detector
+from stain.detector import DEFAULT_MODEL, run_detector
 from stain.models import DetectorResult
 from stain.benchmark import BenchmarkConfig, compare_runs, run_benchmark
-from stain.orchestrator import analyse
+from stain.orchestrator import analyse, _make_audit_logger
 from stain.registry import discover_detectors
 
 console = Console()
@@ -82,7 +82,8 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
     results_dir = Path(config.get("results", {}).get("path", "results")) / run_id
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    model = config.get("models", {}).get("detector", "cerebras/qwen-3-235b-a22b-instruct-2507")
+    model = config.get("models", {}).get("detector", DEFAULT_MODEL)
+    audit_logger = _make_audit_logger(config)
 
     console.print(f"\n[bold]Stain run[/bold] {run_id}")
     console.print(f"Detectors: {', '.join(detector_ids)}")
@@ -100,7 +101,7 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
 
         file_results: list[DetectorResult] = []
         for did in detector_ids:
-            result = run_detector(did, text, model=model)
+            result = run_detector(did, text, model=model, audit_logger=audit_logger)
             file_results.append(result)
 
         # Display inline score

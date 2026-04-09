@@ -5,6 +5,14 @@ from pathlib import Path
 import pytest
 
 from stain.config import get_detector_weight, get_enabled_detectors, load_config
+from stain.registry import clear_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry_cache():
+    clear_cache()
+    yield
+    clear_cache()
 
 
 class TestLoadConfig:

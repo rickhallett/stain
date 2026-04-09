@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 
 import litellm
@@ -19,11 +20,16 @@ from stain.models import DetectorResult, Meta, Verdict
 from stain.registry import DETECTORS_DIR, discover_detectors
 
 
+logger = logging.getLogger(__name__)
+
 # Load .env for API keys (CEREBRAS_API_KEY, GROQ_API_KEY, etc.)
 load_dotenv()
 
 # Suppress litellm's noisy logging by default
 litellm.suppress_debug_info = True
+
+DEFAULT_MODEL = "cerebras/qwen-3-235b-a22b-instruct-2507"
+DEFAULT_TIMEOUT = 30  # seconds
 
 
 def _hash_prompt(prompt_text: str) -> str:
@@ -43,11 +49,15 @@ def _extract_json(raw_text: str) -> dict:
     """Extract JSON from response, stripping markdown fences if present."""
     cleaned = raw_text.strip()
     if cleaned.startswith("```"):
-        first_newline = cleaned.index("\n")
-        cleaned = cleaned[first_newline + 1:]
+        newline_idx = cleaned.find("\n")
+        if newline_idx == -1:
+            # No newline — strip the backticks and hope for the best
+            cleaned = cleaned[3:]
+        else:
+            cleaned = cleaned[newline_idx + 1:]
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
-    return json.loads(cleaned.strip(), strict=False)
+    return json.loads(cleaned.strip())
 
 
 def _validate_annotations(
@@ -242,24 +252,36 @@ def _extract_quotes(text: str) -> list[str]:
     return quotes
 
 
+class DetectorError(Exception):
+    """Raised when a detector call fails (API error, parse error, etc.)."""
+
+    def __init__(self, detector_id: str, message: str):
+        self.detector_id = detector_id
+        super().__init__(f"{detector_id}: {message}")
+
+
 def run_detector(
     detector_id: str,
     input_text: str,
-    model: str = "cerebras/qwen-3-235b-a22b-instruct-2507",
+    model: str = DEFAULT_MODEL,
     audit_logger: AuditLogger | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
 ) -> DetectorResult:
     """Run a single detector against input text and return structured result.
 
     Args:
-        detector_id: Which detector to run (D1-D6).
+        detector_id: Which detector to run (D1-D6+).
         input_text: The text to analyse.
-        model: litellm model string, e.g. "groq/llama-3.3-70b-versatile",
-               "anthropic/claude-haiku-4-5-20251001".
+        model: litellm model string.
         audit_logger: Optional audit logger for recording the interaction.
+        timeout: Timeout in seconds for the LLM call.
+
+    Raises:
+        DetectorError: If the LLM call fails or returns unparseable output.
     """
     detectors = discover_detectors(enabled_only=False)
     if detector_id not in detectors:
-        raise ValueError(f"Detector {detector_id} not found")
+        raise ValueError(f"Detector {detector_id} not found in {DETECTORS_DIR}")
 
     info = detectors[detector_id]
     prompt_text = info.prompt
@@ -267,27 +289,48 @@ def run_detector(
     detector_name = info.name
 
     start = time.monotonic()
-    response = litellm.completion(
-        model=model,
-        max_tokens=2048,
-        messages=[
-            {"role": "system", "content": prompt_text},
-            {
-                "role": "user",
-                "content": (
-                    "Analyse the following text and return your structured "
-                    "JSON verdict.\n\n---\n\n" + input_text
-                ),
-            },
-        ],
-    )
+    try:
+        response = litellm.completion(
+            model=model,
+            max_tokens=2048,
+            timeout=timeout,
+            messages=[
+                {"role": "system", "content": prompt_text},
+                {
+                    "role": "user",
+                    "content": (
+                        "Analyse the following text and return your structured "
+                        "JSON verdict.\n\n---\n\n" + input_text
+                    ),
+                },
+            ],
+        )
+    except Exception as e:
+        raise DetectorError(detector_id, f"LLM call failed: {e}") from e
+
     latency_ms = int((time.monotonic() - start) * 1000)
 
-    # Parse response
+    # Parse response with validation
     raw_text = response.choices[0].message.content
-    raw_json = _extract_json(raw_text)
+    try:
+        raw_json = _extract_json(raw_text)
+    except (json.JSONDecodeError, ValueError) as e:
+        raise DetectorError(
+            detector_id, f"Failed to parse JSON from response: {e}"
+        ) from e
 
-    verdict = Verdict(**raw_json["verdict"])
+    if "verdict" not in raw_json:
+        raise DetectorError(
+            detector_id,
+            f"Response missing 'verdict' key. Got keys: {list(raw_json.keys())}",
+        )
+
+    try:
+        verdict = Verdict(**raw_json["verdict"])
+    except Exception as e:
+        raise DetectorError(
+            detector_id, f"Invalid verdict structure: {e}"
+        ) from e
 
     # Validate annotation spans against actual input text
     verdict.annotations, valid, invalid = _validate_annotations(

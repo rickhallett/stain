@@ -54,9 +54,8 @@ class AuditLogger:
     ):
         self.base_dir = base_dir
         self.enabled = enabled
-        self._session_id = session_id or hashlib.sha256(
-            datetime.now(timezone.utc).isoformat().encode()
-        ).hexdigest()[:12]
+        import uuid
+        self._session_id = session_id or uuid.uuid4().hex[:12]
         self._file_handle = None
         self._current_date: str | None = None
 

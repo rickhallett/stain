@@ -5,11 +5,13 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from stain import __version__
+from stain.audit import AuditLogger
 from stain.config import get_detector_weight, get_enabled_detectors, load_config
-from stain.detector import run_detector
+from stain.detector import DEFAULT_MODEL, run_detector
 from stain.models import (
     CompositeResult,
     DetectorResult,
@@ -61,6 +63,15 @@ def _merge_annotations(results: list[DetectorResult]) -> list[MergedAnnotation]:
     return merged
 
 
+def _make_audit_logger(config: dict[str, Any]) -> AuditLogger:
+    """Create an AuditLogger from config settings."""
+    audit_cfg = config.get("audit", {})
+    return AuditLogger(
+        base_dir=Path(audit_cfg.get("path", ".stain/audit")),
+        enabled=audit_cfg.get("enabled", True),
+    )
+
+
 def analyse(
     input_text: str,
     config: dict[str, Any] | None = None,
@@ -73,13 +84,14 @@ def analyse(
     if detector_ids is None:
         detector_ids = get_enabled_detectors(config)
 
-    model = config.get("models", {}).get("detector", "cerebras/qwen-3-235b-a22b-instruct-2507")
+    model = config.get("models", {}).get("detector", DEFAULT_MODEL)
+    audit_logger = _make_audit_logger(config)
 
     start = time.monotonic()
     results: list[DetectorResult] = []
 
     for did in detector_ids:
-        result = run_detector(did, input_text, model=model)
+        result = run_detector(did, input_text, model=model, audit_logger=audit_logger)
         results.append(result)
 
     total_latency = int((time.monotonic() - start) * 1000)
