@@ -326,3 +326,25 @@
     - tests/test_input.py
     - tests/test_output.py
     - tests/test_cli_integration.py
+
+- id: "013"
+  date: "2026-04-09"
+  title: "Ring 3 — Corpus Infrastructure"
+  context: >
+    Ring 2 made Stain a Unix citizen. Ring 3 scales the corpus from 33 flat
+    files to a tiered, manifest-tracked system. Gold tier is the final exam
+    (hand-curated). Bulk tier is machine-generated, spot-checked.
+  decision: >
+    Two-tier corpus with YAML manifests per tier. corpus.py handles manifest
+    I/O, stats, validation, and labeling. generate.py produces LLM samples
+    (via litellm with domain prompts) and scrapes human samples (trafilatura
+    with Wayback Machine fallback). CLI: corpus stats/validate/label/generate.
+    Benchmark configs can target a specific tier via corpus_tier field.
+  artifacts:
+    - src/stain/corpus.py
+    - src/stain/generate.py
+    - src/stain/cli.py
+    - corpus/gold/manifest.yaml
+    - corpus/corpus.yaml
+    - tests/test_corpus.py
+    - tests/test_generate.py
