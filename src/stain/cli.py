@@ -16,7 +16,8 @@ from rich.text import Text
 from stain import __version__
 from stain.config import get_enabled_detectors, load_config
 from stain.detector import DEFAULT_MODEL, run_detector
-from stain.models import DetectorResult
+from stain.input import InputItem
+from stain.models import CompositeResult, DetectorResult
 from stain.benchmark import BenchmarkConfig, compare_runs, run_benchmark
 from stain.orchestrator import analyse, _make_audit_logger
 from stain.registry import discover_detectors
@@ -185,14 +186,14 @@ def analyse_cmd(
 
     # Run analysis on each input
     max_score = 0.0
-    results_list: list[tuple[str, "CompositeResult"]] = []
+    results_list: list[tuple[InputItem, CompositeResult]] = []
 
     for item in items:
         try:
             if mode == OutputMode.RICH and len(items) > 1:
                 console.print(f"\n[bold]{item.source}[/bold]")
             result = analyse(item.text, config=config)
-            results_list.append((item.source, result))
+            results_list.append((item, result))
             max_score = max(max_score, result.composite_score)
         except Exception as e:
             console_err.print(f"[red]Error analysing {item.source}:[/red] {e}")
@@ -201,24 +202,22 @@ def analyse_cmd(
     # Format output
     single = len(results_list) == 1
 
-    for source, result in results_list:
+    for item, result in results_list:
         if mode == OutputMode.JSON:
             if single:
                 click.echo(format_json(result))
             else:
-                import json as _json
                 data = result.model_dump()
-                data["source"] = source
-                click.echo(_json.dumps(data, indent=2))
+                data["source"] = item.source
+                click.echo(json.dumps(data, indent=2))
         elif mode == OutputMode.PLAIN:
-            prefix = "" if single else f"{source}: "
+            prefix = "" if single else f"{item.source}: "
             click.echo(f"{prefix}{format_plain(result)}")
         elif mode == OutputMode.SCORE:
-            prefix = "" if single else f"{source}: "
+            prefix = "" if single else f"{item.source}: "
             click.echo(f"{prefix}{format_score(result)}")
         elif mode == OutputMode.RICH:
-            text = items[0].text if single else ""
-            _render_rich(result, text, source)
+            _render_rich(result, item.text, item.source)
 
     # Exit code based on threshold
     if max_score >= threshold:
@@ -226,7 +225,7 @@ def analyse_cmd(
     raise SystemExit(EXIT_OK)
 
 
-def _render_rich(result: "CompositeResult", text: str, source: str):
+def _render_rich(result: CompositeResult, text: str, source: str):
     """Render rich TTY output for a single analysis result."""
     score_color = _score_color(result.composite_score)
     console.print()
