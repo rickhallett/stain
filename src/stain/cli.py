@@ -16,12 +16,20 @@ from rich.text import Text
 from stain import __version__
 from stain.config import get_enabled_detectors, load_config
 from stain.detector import DEFAULT_MODEL, run_detector
-from stain.models import DetectorResult
+from stain.input import InputItem
+from stain.models import CompositeResult, DetectorResult
 from stain.benchmark import BenchmarkConfig, compare_runs, run_benchmark
 from stain.orchestrator import analyse, _make_audit_logger
 from stain.registry import discover_detectors
 
 console = Console()
+console_err = Console(stderr=True)
+
+# Exit codes (Ring 2 spec)
+EXIT_OK = 0          # Score below threshold
+EXIT_FLAGGED = 1     # Score at or above threshold
+EXIT_INPUT_ERROR = 2  # Bad input (file not found, empty, etc.)
+EXIT_API_ERROR = 3   # LLM/API error
 
 
 def _severity_color(severity: str) -> str:
@@ -136,27 +144,97 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
     console.print(f"\n[bold green]Results saved:[/bold green] {results_dir}/")
 
 
-@cli.command()
-@click.argument("input_path", type=click.Path(exists=True))
+@cli.command("analyse")
+@click.argument("sources", nargs=-1)
+@click.option("--json", "output_json", is_flag=True, help="JSON output")
+@click.option("--plain", is_flag=True, help="One-liner output")
+@click.option("--score", "score_only", is_flag=True, help="Score only")
+@click.option("--threshold", "-t", default=0.55, type=float, help="Exit code threshold (default: 0.55)")
 @click.option("--config", "-c", "config_path", default=None, type=click.Path(exists=True))
-def analyse_cmd(input_path: str, config_path: str | None):
-    """Analyse a single text file and display composite profile."""
+def analyse_cmd(
+    sources: tuple[str, ...],
+    output_json: bool,
+    plain: bool,
+    score_only: bool,
+    threshold: float,
+    config_path: str | None,
+):
+    """Analyse text for LLM generation patterns.
+
+    SOURCES can be file paths, glob patterns, URLs, or '-' for stdin.
+    When no source is given and stdin is piped, reads from stdin.
+
+    \b
+    Examples:
+      stain analyse post.txt
+      pbpaste | stain analyse -
+      stain analyse https://example.com/article
+      stain analyse posts/*.txt --score
+    """
+    from stain.input import InputError, resolve_inputs
+    from stain.output import OutputMode, detect_mode, format_json, format_plain, format_score
+
     config = load_config(Path(config_path) if config_path else None)
-    text = Path(input_path).read_text()
+    mode = detect_mode(json_flag=output_json, plain_flag=plain, score_flag=score_only)
 
-    with console.status("[bold]Running detectors..."):
-        result = analyse(text, config=config)
+    # Resolve inputs
+    try:
+        items = resolve_inputs(sources, stdin_stream=click.get_text_stream("stdin"))
+    except InputError as e:
+        console_err.print(f"[red]Input error:[/red] {e}")
+        raise SystemExit(EXIT_INPUT_ERROR)
 
-    # Header
+    # Run analysis on each input
+    max_score = 0.0
+    results_list: list[tuple[InputItem, CompositeResult]] = []
+
+    for item in items:
+        try:
+            if mode == OutputMode.RICH and len(items) > 1:
+                console.print(f"\n[bold]{item.source}[/bold]")
+            result = analyse(item.text, config=config)
+            results_list.append((item, result))
+            max_score = max(max_score, result.composite_score)
+        except Exception as e:
+            console_err.print(f"[red]Error analysing {item.source}:[/red] {e}")
+            raise SystemExit(EXIT_API_ERROR)
+
+    # Format output
+    single = len(results_list) == 1
+
+    for item, result in results_list:
+        if mode == OutputMode.JSON:
+            if single:
+                click.echo(format_json(result))
+            else:
+                data = result.model_dump()
+                data["source"] = item.source
+                click.echo(json.dumps(data, indent=2))
+        elif mode == OutputMode.PLAIN:
+            prefix = "" if single else f"{item.source}: "
+            click.echo(f"{prefix}{format_plain(result)}")
+        elif mode == OutputMode.SCORE:
+            prefix = "" if single else f"{item.source}: "
+            click.echo(f"{prefix}{format_score(result)}")
+        elif mode == OutputMode.RICH:
+            _render_rich(result, item.text, item.source)
+
+    # Exit code based on threshold
+    if max_score >= threshold:
+        raise SystemExit(EXIT_FLAGGED)
+    raise SystemExit(EXIT_OK)
+
+
+def _render_rich(result: CompositeResult, text: str, source: str):
+    """Render rich TTY output for a single analysis result."""
     score_color = _score_color(result.composite_score)
     console.print()
     console.print(Panel(
         f"[bold {score_color}]Composite Score: {result.composite_score:.3f}[/bold {score_color}]"
         f"\n{result.input_length_chars} chars | {len(result.detector_results)} detector(s)",
-        title="[bold]Stain Analysis[/bold]",
+        title=f"[bold]Stain Analysis[/bold] — {source}",
     ))
 
-    # Per-detector breakdown
     table = Table(title="Detector Breakdown")
     table.add_column("Detector", style="bold")
     table.add_column("Score", justify="right")
@@ -176,8 +254,7 @@ def analyse_cmd(input_path: str, config_path: str | None):
 
     console.print(table)
 
-    # Annotations
-    if result.merged_annotations:
+    if result.merged_annotations and text:
         console.print("\n[bold]Flagged Spans[/bold]")
         for ma in result.merged_annotations:
             span_text = text[ma.span_start:ma.span_end]
@@ -191,13 +268,8 @@ def analyse_cmd(input_path: str, config_path: str | None):
                 console.print(f"    {did}: {expl}")
             console.print()
 
-    # Meta
     console.print(f"[dim]Latency: {result.meta['total_latency_ms']}ms | "
                   f"Tokens: {result.meta['total_tokens_in']}in/{result.meta['total_tokens_out']}out[/dim]")
-
-
-# Register analyse command with the spec'd name
-cli.add_command(analyse_cmd, "analyse")
 
 
 @cli.group()

@@ -306,3 +306,23 @@
     - con: "Equal weighting strategy is naive — needs data-driven adjustment"
   artifacts:
     - results/benchmarks/20260409_075442_9a411fb68584/
+
+- id: "012"
+  date: "2026-04-09"
+  title: "Ring 2 — Input & Output Hardening"
+  context: >
+    Ring 1 shipped the detection engine. Ring 2 makes Stain a Unix citizen:
+    pipe it, script it, chain it. Multiple input paths, output modes,
+    semantic exit codes, threshold gating.
+  decision: >
+    New input.py resolves files/stdin/URLs/globs into InputItems.
+    New output.py formats results as JSON/plain/score with TTY auto-detection.
+    analyse command refactored with exit codes 0-3 and --threshold flag.
+    trafilatura for URL text extraction.
+  artifacts:
+    - src/stain/input.py
+    - src/stain/output.py
+    - src/stain/cli.py
+    - tests/test_input.py
+    - tests/test_output.py
+    - tests/test_cli_integration.py
