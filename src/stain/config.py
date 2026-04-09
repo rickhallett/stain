@@ -22,19 +22,14 @@ def load_config(path: Path | None = None) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def get_enabled_detectors(config: dict[str, Any]) -> list[str]:
-    """Return list of enabled detector IDs."""
-    return [
-        did for did, dcfg in config.get("detectors", {}).items()
-        if dcfg.get("enabled", False)
-    ]
-
-
-def get_detector_weight(config: dict[str, Any], detector_id: str) -> float:
-    """Get weight for a detector."""
-    return config.get("detectors", {}).get(detector_id, {}).get("weight", 1.0)
-
-
-def get_enabled_detectors_from_registry() -> list[str]:
-    """Return enabled detector IDs from filesystem registry."""
+def get_enabled_detectors(config: dict[str, Any] | None = None) -> list[str]:
+    """Return list of enabled detector IDs from the filesystem registry."""
     return list(discover_detectors(enabled_only=True).keys())
+
+
+def get_detector_weight(config: dict[str, Any] | None, detector_id: str) -> float:
+    """Get weight for a detector from the filesystem registry."""
+    detectors = discover_detectors(enabled_only=False)
+    if detector_id in detectors:
+        return detectors[detector_id].weight
+    return 1.0
