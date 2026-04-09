@@ -258,3 +258,51 @@
     - "Git-tracked alongside the code they analyse"
   artifacts:
     - research/notebooks/
+
+- id: "011"
+  date: "2026-04-09"
+  title: "Ring 1 complete — 6-detector benchmark reveals dilution problem"
+  type: finding
+  context: |
+    All 6 detectors built with plugin architecture, audit logging, and
+    registry-driven config. First full-suite benchmark: 138 LLM calls
+    (23 files × 6 detectors) on Cerebras Qwen3 235B.
+  finding: |
+    ## 6-Detector Benchmark Results
+
+    | Detector | Human Mean | LLM Mean | Separation | Status |
+    |----------|-----------|----------|------------|--------|
+    | D1 Rhetorical | ~0.31 | ~0.70 | ~0.39 | Strong |
+    | D2 Rhythm | ~0.29 | ~0.37 | ~0.08 | Weak |
+    | D3 Lexical | ~0.24 | ~0.30 | ~0.06 | Non-diagnostic |
+    | D4 Hedging | ~0.18 | ~0.25 | ~0.07 | Non-diagnostic |
+    | D5 Structure | ~0.28 | ~0.47 | ~0.19 | Promising |
+    | D6 Semantic | ~0.27 | ~0.35 | ~0.08 | Weak |
+
+    Composite: 0.150 separation, 74.1% accuracy at θ=0.50
+    (D1 alone: 0.371 separation, 100% accuracy)
+
+    Key finding: new detectors DILUTE D1's strong signal. Equal weights
+    (1.0 for all) mean weak detectors drag the composite down. D3, D4, D6
+    are scoring LLM text almost identically to human text — their v0.1.0
+    prompts are not discriminating.
+
+    D5 shows promise (0.19 separation) — signpost narration and structural
+    predictability are real signals. D2 has some signal but inconsistent.
+
+    3 Cerebras failures (ServiceUnavailableError) — transient load issues.
+
+    Next steps:
+    1. Weight adjustment: reduce D3/D4/D6 weights or disable until prompts improve
+    2. Prompt iteration on D2/D5 to push separation above 0.30
+    3. D3/D4/D6 need fundamental prompt rework — current approach isn't working
+    4. Consider whether these dimensions need different detection strategies
+       (e.g., computational metrics for D2/D3 rather than LLM judgment)
+  trade_offs:
+    - pro: "Plugin architecture works flawlessly — all 6 discovered and executed"
+    - pro: "Benchmark framework caught the problem immediately"
+    - pro: "D1 remains rock-solid (0.70 mean on LLM, 0.31 on human)"
+    - con: "4 of 6 new detectors below 0.30 separation threshold"
+    - con: "Equal weighting strategy is naive — needs data-driven adjustment"
+  artifacts:
+    - results/benchmarks/20260409_075442_9a411fb68584/
