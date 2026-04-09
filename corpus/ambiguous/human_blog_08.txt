@@ -1,0 +1,9 @@
+Everyone in tech has a side project. Mine is a weather app that tells you the weather in the rudest way possible. It has eleven users and I am nine of them (the other two are my brother and someone in Finland who I have never met).
+
+I built it because I was learning Swift and needed something to build and because the App Store has approximately four thousand weather apps that all look the same and say things like "partly cloudy, 15°C" when what I want to know is "it's grey and miserable, wear a coat you idiot."
+
+The technical architecture is embarrassingly simple. It calls the OpenWeatherMap API, maps condition codes to insults I wrote on a Sunday afternoon, and displays them in a font I probably didn't license correctly. There's no state management because there's one screen. There's no analytics because I don't want to know.
+
+I've spent more time on this project than it deserves and less time than it needs. The icon is a cloud with an angry face that my wife drew on an iPad in about ten minutes. It's the best part of the app.
+
+I will never monetize this. I will never scale it. I will never write a thread about what I learned building it. It exists because making things is fun and not everything needs to be a business. That's allowed.

@@ -1,0 +1,9 @@
+name: "Cerebras Qwen3 235B"
+model: "cerebras/qwen-3-235b-a22b-instruct-2507"
+detectors: [D1]
+corpus_dirs:
+  - corpus/known_human
+  - corpus/known_llm
+max_retries: 3
+retry_delay: 5.0
+delay_between: 0.5

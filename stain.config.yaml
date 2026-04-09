@@ -1,0 +1,59 @@
+# Stain configuration
+# Model selection, detector weights, API config
+#
+# Model names use litellm format: "provider/model"
+#
+# Cerebras (CEREBRAS_API_KEY) — wafer-scale, insane throughput:
+#   cerebras/qwen-3-235b-a22b-instruct-2507  — 235B params, 563ms, best quality
+#   cerebras/llama3.1-8b                      — 667ms, cheapest, may fumble annotations
+#
+# OpenRouter (OPENROUTER_API_KEY) — multi-provider routing:
+#   openrouter/meta-llama/llama-3.3-70b-instruct  — 813ms, solid JSON
+#
+# Anthropic (ANTHROPIC_API_KEY) — original:
+#   anthropic/claude-haiku-4-5-20251001   — 1690ms, most reliable
+#   anthropic/claude-sonnet-4-5-20250514  — slow but highest quality
+#
+# Groq (GROQ_API_KEY) — LPU hardware:
+#   groq/llama-3.3-70b-versatile
+
+models:
+  # Cost-efficient detector calls
+  detector: cerebras/qwen-3-235b-a22b-instruct-2507
+  # Complex analysis (orchestrator, fallback)
+  orchestrator: anthropic/claude-sonnet-4-5-20250514
+
+detectors:
+  D1:
+    name: Rhetorical Pattern
+    enabled: true
+    weight: 1.0
+  D2:
+    name: Sentence Rhythm
+    enabled: false  # Phase 2
+    weight: 1.0
+  D3:
+    name: Lexical Diversity
+    enabled: false
+    weight: 1.0
+  D4:
+    name: Hedging Density
+    enabled: false
+    weight: 1.0
+  D5:
+    name: Structural Predictability
+    enabled: false
+    weight: 1.0
+  D6:
+    name: Semantic Emptiness
+    enabled: false
+    weight: 1.0
+
+corpus:
+  path: corpus/
+  known_llm: corpus/known_llm/
+  known_human: corpus/known_human/
+  ambiguous: corpus/ambiguous/
+
+results:
+  path: results/

@@ -1,0 +1,128 @@
+# Stain Development Log
+# Chronological record of decisions, findings, trade-offs, and artifacts.
+# Each entry is immutable once written. Append only.
+
+- id: "001"
+  date: "2026-04-09"
+  title: "Multi-provider inference via litellm"
+  type: decision
+  context: |
+    Stain makes multiple LLM calls per analysis (one per detector, scaling to 6
+    detectors × N corpus files). The original Anthropic-only SDK would lock us
+    into a single provider and price point. Cost and latency are multiplicative
+    — every detector call compounds.
+  decision: |
+    Replaced the `anthropic` SDK with `litellm` for provider-agnostic inference.
+    Model selection is now a single config string: "provider/model".
+    Any provider with an OpenAI-compatible API works out of the box.
+  trade_offs:
+    - pro: "Hot-swap models in config without code changes"
+    - pro: "Access to Groq LPU, Cerebras wafer-scale, OpenRouter, Together, etc."
+    - pro: "litellm normalises usage/token counting across providers"
+    - con: "Extra dependency (~15 transitive packages including openai SDK)"
+    - con: "litellm can lag behind provider API changes"
+  artifacts:
+    - src/stain/detector.py
+    - stain.config.yaml
+    - pyproject.toml
+
+- id: "002"
+  date: "2026-04-09"
+  title: "Cerebras selected as primary inference provider"
+  type: decision
+  context: |
+    Stain's multi-detector architecture means a single analysis can issue 6+
+    LLM calls. At Anthropic Haiku pricing ($0.80/M input, $4/M output) and
+    ~1.7s latency per call, a full 6-detector sweep on 23 files would cost ~$2
+    and take ~4 minutes. For a tool meant to run frequently during writing,
+    this is too slow and too expensive.
+  decision: |
+    Cerebras wafer-scale inference as the default provider, using
+    `cerebras/qwen-3-235b-a22b-instruct-2507` (235B parameter model).
+    Groq LPU as secondary option. Anthropic retained for orchestrator tasks
+    requiring highest reasoning quality.
+  rationale:
+    - "235B model at sub-1s latency — larger than any Groq-hosted model"
+    - "No rate limit issues on paid tier (Groq free tier hit rate limits after 5 calls)"
+    - "Cost ~40x cheaper than Anthropic Haiku on equivalent workloads"
+    - "Qwen 3 instruction-following quality rivals Claude Haiku for structured JSON tasks"
+  trade_offs:
+    - pro: "23 files in 33s total (vs estimated 4+ min on Anthropic)"
+    - pro: "Zero failures across full corpus"
+    - con: "Cerebras model availability is limited (no 70B Llama on our tier)"
+    - con: "Annotation character offsets still imperfect (80% valid rate)"
+  artifacts:
+    - .env
+    - stain.config.yaml
+    - benchmarks/cerebras_qwen235b.yaml
+
+- id: "003"
+  date: "2026-04-09"
+  title: "Annotation span validation and repair"
+  type: finding
+  context: |
+    Small models (8B) return character offsets that are actually word indices
+    or line numbers. Even the 235B model produces invalid offsets ~20% of the
+    time. Without validation, a UI highlighting flagged spans would point at
+    completely wrong text.
+  finding: |
+    Added a multi-stage validation pipeline in detector.py:
+    1. Bounds check (out of range, negative, start >= end)
+    2. Plausibility check (span < 3 chars = probably word indices)
+    3. Content check (extract quotes from explanation, verify they appear in span)
+    4. Repair (search input text for quoted/verbatim phrases from explanation)
+    5. Fallback phrase matching (sliding window over explanation words)
+    Annotations that can't be salvaged are kept but marked `span_valid=False`.
+  trade_offs:
+    - pro: "Recovers correct spans from garbage offsets when explanation contains quotes"
+    - pro: "Downstream consumers can filter on span_valid"
+    - con: "Repair is heuristic — can't fix annotations where the model paraphrases entirely"
+    - con: "Adds ~50 lines of string matching logic"
+  artifacts:
+    - src/stain/detector.py
+    - src/stain/models.py
+
+- id: "004"
+  date: "2026-04-09"
+  title: "Benchmark framework and first three-way model comparison"
+  type: finding
+  context: |
+    Needed repeatable, content-addressed model evaluation to make data-driven
+    decisions as new models arrive. Built `stain benchmark run` and
+    `stain benchmark compare` commands.
+  finding: |
+    First formal benchmark across 23 corpus files (13 human, 10 LLM), D1 only.
+
+    ## Scorecard — 2026-04-09
+
+    | Metric                   | Cerebras Qwen3 235B | Groq Llama3.3 70B | Groq Llama3.1 8B |
+    |--------------------------|--------------------:|------------------:|-----------------:|
+    | Human score (mean)       |              0.3192 |            0.3846 |           0.5027 |
+    | Human score (stdev)      |              0.0253 |            0.1676 |           0.1614 |
+    | LLM score (mean)         |               0.690 |            0.7022 |           0.7086 |
+    | LLM score (stdev)        |              0.0316 |            0.0067 |           0.0501 |
+    | Separation               |              0.3708 |            0.3176 |           0.2059 |
+    | Accuracy θ=0.50          |              100.0% |             90.9% |           55.6%  |
+    | Latency mean (ms)        |               1022  |              1459 |            892   |
+    | Failed                   |               0/23  |              1/23 |           5/23   |
+    | Annotations valid        |                103  |                69 |             72   |
+    | Annotations invalid      |                 28  |                15 |             23   |
+
+    Key findings:
+    - Qwen 235B: perfect classification at every threshold (0.40–0.60), tightest
+      human scoring (stdev 0.025), zero failures
+    - Groq 70B: scored two Sivers essays at 0.70 (false positives), one JSON
+      parse failure
+    - 8B: not viable — 55% accuracy, 5 parse failures, scores human text 0.50+
+    - A threshold of θ=0.55 gives 100% accuracy on Qwen 235B
+    - LLM confidence is uniformly high (0.85+) across all models; human
+      confidence is correctly lower (0.60–0.70)
+  artifacts:
+    - results/benchmarks/20260409_053521_ed3ca8089d3f/  # Cerebras Qwen3 235B
+    - results/benchmarks/20260409_053600_ba44ec731b13/  # Groq Llama3.3 70B
+    - results/benchmarks/20260409_053706_a9382dc1223c/  # Groq Llama3.1 8B
+    - benchmarks/cerebras_qwen235b.yaml
+    - benchmarks/groq_llama70b.yaml
+    - benchmarks/groq_llama8b.yaml
+    - src/stain/benchmark.py
+    - src/stain/cli.py

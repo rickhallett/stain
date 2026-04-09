@@ -1,0 +1,11 @@
+There are too many note-taking apps. I know because I've used most of them.
+
+Evernote in 2014. Bear in 2017. Notion from 2019 to 2021, during which I spent more time organizing my system than actually writing notes. Obsidian after that, which I liked because it was just files, but then I fell into the plugin rabbit hole and emerged three weeks later with a knowledge graph that looked impressive and contained nothing useful.
+
+Right now I use Apple Notes and a paper notebook. The paper notebook is a Leuchtturm 1917 that cost £16 and has no sync, no backlinks, no daily note template, and no community of productivity enthusiasts sharing their "workflows." It's just pages.
+
+I write things in it. Sometimes I look back at them. Mostly I don't. The act of writing is the thinking; the artifact is secondary.
+
+I realize this makes me sound like a Luddite and I'm not. I write code for a living. But there's something about the note-taking-app-industrial-complex that optimizes for everything except the thing notes are for, which is helping you think. Instead we get databases, relations, templates, and an ever-present feeling that you're doing it wrong because someone on Twitter has a better setup.
+
+You're not doing it wrong. Write the thing down. Move on. That's it. That's the system.

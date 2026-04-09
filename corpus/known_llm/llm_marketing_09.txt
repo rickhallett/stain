@@ -1,0 +1,21 @@
+Stop Building Features Nobody Asked For
+
+There's a pattern I've seen in every product team I've worked with, and it goes something like this: someone reads a competitor's changelog, panics, and suddenly there's a new feature on the roadmap that nobody requested.
+
+This is how products die. Not with a bang, but with a bloat.
+
+Here's the uncomfortable reality: feature parity is a race to the bottom. When you build because your competitor built, you're not innovating — you're reacting. And reactive product strategy is the fastest path to a confused product, a frustrated team, and a customer base that can't explain what you actually do.
+
+But here's what I've learned building products for the last eight years: the best product decisions are subtractive, not additive.
+
+Not "what should we build next?" but "what should we stop building?" Not "what features are we missing?" but "what features are distracting us from our core value?"
+
+Let me be specific.
+
+The products people love — the ones they recommend to friends, pay a premium for, and refuse to leave — aren't the ones with the most features. They're the ones that do fewer things, better. They have opinions. They make choices. They say no.
+
+To be fair, there are moments when a new feature is exactly what's needed. Customer feedback is real, and ignoring it is arrogance. But there's a difference between listening to your customers and being led by your competitors.
+
+Build for the problem you understand deeply. Say no to everything else.
+
+That's not a product philosophy. That's survival.

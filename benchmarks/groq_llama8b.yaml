@@ -1,0 +1,9 @@
+name: "Groq Llama3.1 8B"
+model: "groq/llama-3.1-8b-instant"
+detectors: [D1]
+corpus_dirs:
+  - corpus/known_human
+  - corpus/known_llm
+max_retries: 5
+retry_delay: 5.0
+delay_between: 1.0

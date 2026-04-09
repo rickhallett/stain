@@ -1,0 +1,9 @@
+name: "Anthropic Haiku"
+model: "anthropic/claude-haiku-4-5-20251001"
+detectors: [D1]
+corpus_dirs:
+  - corpus/known_human
+  - corpus/known_llm
+max_retries: 3
+retry_delay: 5.0
+delay_between: 0.5
