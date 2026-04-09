@@ -6,6 +6,17 @@
 ![litellm](https://img.shields.io/badge/litellm-provider%20agnostic-orange?logo=openai&logoColor=white)
 ![PyPI](https://img.shields.io/badge/pypi-stain--cli-green)
 
+```mermaid
+graph LR
+    INPUT["Text Input"] --> D1["D1 -- Rhetorical Pattern"]
+    INPUT --> D2["D2 -- Sentence Rhythm"]
+    INPUT --> D3["D3 -- Lexical Diversity"]
+    INPUT --> D4["D4 -- Hedging Density"]
+    INPUT --> D5["D5 -- Structural Predictability"]
+    INPUT --> D6["D6 -- Semantic Emptiness"]
+    D1 & D2 & D3 & D4 & D5 & D6 --> SCORE["Composite Score"]
+```
+
 ---
 
 ## What is Stain?
