@@ -70,7 +70,10 @@ def _read_file(path_str: str) -> InputItem:
     path = Path(path_str)
     if not path.is_file():
         raise InputError(f"File not found: {path_str}")
-    text = path.read_text()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as e:
+        raise InputError(f"Cannot read file: {path_str} ({e})") from e
     if not text.strip():
         raise InputError(f"File is empty: {path_str}")
     return InputItem(text=text, source=str(path), source_type=SourceType.FILE)
@@ -78,14 +81,21 @@ def _read_file(path_str: str) -> InputItem:
 
 def _expand_glob(pattern: str) -> list[InputItem]:
     """Expand a glob pattern and return InputItems for each match."""
+    # Use Path.glob from the appropriate root to handle ** recursive patterns
     p = Path(pattern)
-    parent = p.parent
-    glob_part = p.name
+    if p.is_absolute():
+        # Absolute: split into anchor + relative glob
+        parts = p.parts
+        root = Path(parts[0])
+        glob_pattern = str(Path(*parts[1:]))
+    else:
+        root = Path(".")
+        glob_pattern = pattern
 
-    if not parent.exists():
+    if not root.exists():
         raise InputError(f"No files match pattern: {pattern}")
 
-    matches = sorted(parent.glob(glob_part))
+    matches = sorted(root.glob(glob_pattern))
     matches = [m for m in matches if m.is_file()]
 
     if not matches:
