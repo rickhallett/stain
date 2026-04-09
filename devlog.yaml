@@ -368,3 +368,23 @@
     - agents/discovery/prompt.md
     - src/stain/cli.py
     - tests/test_discovery.py
+
+- id: "015"
+  date: "2026-04-09"
+  title: "Ring 5 — Research Pipeline"
+  context: >
+    Ring 4 built discovery from Stain's own output. Ring 5 adds external
+    research: academic papers ingested from Arcana (multi-agent research
+    pipeline) with hypothesis extraction and merge into discovery store.
+  decision: >
+    Thin HTTP adapter to Arcana API rather than building arXiv fetcher.
+    research.py fetches processed papers, runs Sonnet-tier extraction agent,
+    merges hypotheses into Ring 4 store. Research prompt in
+    agents/research_extract/prompt.md. Config in research/config.yaml.
+    CLI: research fetch/extract/list/show/update.
+  artifacts:
+    - src/stain/research.py
+    - agents/research_extract/prompt.md
+    - research/config.yaml
+    - src/stain/cli.py
+    - tests/test_research.py

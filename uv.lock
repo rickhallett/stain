@@ -3380,6 +3380,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "httpx" },
     { name = "litellm" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -3402,6 +3403,7 @@ notebook = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.0,<9" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "jupyter", marker = "extra == 'notebook'", specifier = ">=1.0" },
     { name = "litellm", specifier = ">=1.40.0,<2" },
     { name = "matplotlib", marker = "extra == 'notebook'", specifier = ">=3.8" },
