@@ -1,0 +1,21 @@
+id: D1
+name: "Rhetorical Pattern"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Identifies overrepresented rhetorical devices: correctio, tricolon closers, false-balance qualifiers, escalation frames, anaphora, semantic couplets, pivot conjunctions."
+patterns:
+  - name: correctio
+    description: "Not X — it's Y rhetorical pivot"
+  - name: tricolon_closer
+    description: "Three-part lists for rhetorical emphasis"
+  - name: false_balance
+    description: "Hedged both-sides framing that commits to nothing"
+  - name: escalation_frame
+    description: "Artificial urgency or revelation markers"
+  - name: anaphora
+    description: "Repeated sentence openings for emphasis"
+  - name: semantic_couplet
+    description: "Paired near-synonyms for emphasis"
+  - name: pivot_conjunction
+    description: "Dramatic turn markers signalling manufactured insight"
