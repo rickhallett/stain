@@ -182,6 +182,47 @@ class TestCorpusValidate:
             assert result.exit_code == 0
 
 
+class TestDiscoverList:
+    def test_list_empty(self, tmp_path):
+        with patch("stain.cli._discovery_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["discover", "list"])
+            assert result.exit_code == 0
+            assert "no" in result.output.lower() or "0" in result.output
+
+    def test_list_shows_hypotheses(self, tmp_path):
+        from stain.discovery import HypothesisStore, save_hypothesis_store
+        store = HypothesisStore()
+        store.merge([{"pattern_name": "test_p", "description": "Test desc", "confidence": 0.7, "suggested_detector": "New"}], "f.txt")
+        save_hypothesis_store(store, tmp_path / "hypotheses.yaml")
+
+        with patch("stain.cli._discovery_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["discover", "list"])
+            assert result.exit_code == 0
+            assert "test_p" in result.output
+
+
+class TestDiscoverRun:
+    def test_discover_file_cli(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Some text to run through the full discovery pipeline for testing.")
+
+        mock_composite = MagicMock()
+        mock_composite.detector_results = []
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = '{"hypotheses": []}'
+
+        with patch("stain.discovery.analyse", return_value=mock_composite), \
+             patch("stain.discovery.litellm.completion", return_value=mock_llm), \
+             patch("stain.cli._discovery_dir", return_value=tmp_path / "disc"):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["discover", str(f)])
+            assert result.exit_code == 0
+
+
 class TestCorpusGenerate:
     def test_generate_llm_invokes(self, tmp_path):
         from stain.corpus import Manifest, save_manifest

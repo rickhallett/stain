@@ -487,3 +487,149 @@ def corpus_generate_cmd(
                 wayback_fallback=wayback,
             )
         console.print(f"[green]Scraped {len(entries)} human samples in {tier}/[/green]")
+
+
+# ---------------------------------------------------------------------------
+# Discovery commands
+# ---------------------------------------------------------------------------
+
+def _discovery_dir() -> Path:
+    """Get discovery directory."""
+    return Path("discovery")
+
+
+class _DiscoverGroup(click.Group):
+    """Group that treats unknown 'subcommands' as file path arguments."""
+
+    def invoke(self, ctx: click.Context):
+        if not ctx._protected_args:
+            # No positional args — run group callback (invoke_without_command)
+            return super().invoke(ctx)
+
+        # Peek at the first positional arg
+        cmd_name = ctx._protected_args[0]
+        if cmd_name in self.commands:
+            # Known subcommand — let Click dispatch normally
+            return super().invoke(ctx)
+
+        # Not a subcommand — treat it as a source file path.
+        # Pull it out of protected_args so Click doesn't try to resolve it.
+        source = ctx._protected_args.pop(0)
+        ctx.ensure_object(dict)["_discover_source"] = source
+        # Clear protected args so Click takes the invoke_without_command path
+        ctx.args = [*ctx._protected_args, *ctx.args]
+        ctx._protected_args = []
+        return super().invoke(ctx)
+
+
+@cli.group(cls=_DiscoverGroup, invoke_without_command=True)
+@click.option("--corpus", "corpus_tier", default=None, help="Run across corpus tier")
+@click.option("--model", "disc_model", default=None, help="Discovery model override")
+@click.pass_context
+def discover(ctx, corpus_tier: str | None, disc_model: str | None):
+    """Run discovery pipeline to find new patterns.
+
+    \b
+    Examples:
+      stain discover post.txt
+      stain discover --corpus gold
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from stain.discovery import discover_file, discover_corpus
+
+    disc_dir = _discovery_dir()
+    config = load_config()
+
+    source = ctx.ensure_object(dict).get("_discover_source")
+
+    if corpus_tier:
+        with console.status(f"[bold]Running discovery across {corpus_tier} corpus..."):
+            results = discover_corpus(corpus_tier, config=config, discovery_model=disc_model, discovery_dir=disc_dir)
+        total_hyp = sum(len(r.hypotheses) for r in results)
+        console.print(f"[green]Processed {len(results)} files, found {total_hyp} hypothesis instances[/green]")
+
+    elif source:
+        source_path = Path(source)
+        if not source_path.is_file():
+            console.print(f"[red]File not found: {source}[/red]")
+            raise SystemExit(2)
+        with console.status("[bold]Running detectors + discovery..."):
+            result = discover_file(source_path, config=config, discovery_model=disc_model, discovery_dir=disc_dir)
+        console.print(f"[green]Found {len(result.hypotheses)} hypotheses[/green]")
+        for h in result.hypotheses:
+            console.print(f"  - [bold]{h['pattern_name']}[/bold] (confidence: {h.get('confidence', '?')})")
+            console.print(f"    {h.get('description', '')}")
+    else:
+        console.print("[yellow]Provide a file or use --corpus[/yellow]")
+        raise SystemExit(2)
+
+
+@discover.command("list")
+def discover_list():
+    """Show all discovered pattern hypotheses."""
+    from stain.discovery import load_hypothesis_store
+
+    disc_dir = _discovery_dir()
+    store = load_hypothesis_store(disc_dir / "hypotheses.yaml")
+
+    if not store.hypotheses:
+        console.print("[dim]No hypotheses found. Run 'stain discover <file>' first.[/dim]")
+        return
+
+    table = Table(title="Discovery Hypotheses")
+    table.add_column("Pattern", style="bold")
+    table.add_column("Confidence", justify="right")
+    table.add_column("Occurrences", justify="right")
+    table.add_column("Status")
+    table.add_column("Description")
+
+    for name, h in sorted(store.hypotheses.items(), key=lambda x: -x[1].occurrence_count):
+        status_color = {"pending": "yellow", "approved": "blue", "promoted": "green", "rejected": "dim"}.get(h.status, "white")
+        table.add_row(
+            name,
+            f"{h.confidence:.2f}",
+            str(h.occurrence_count),
+            f"[{status_color}]{h.status}[/{status_color}]",
+            h.description[:60] + ("..." if len(h.description) > 60 else ""),
+        )
+
+    console.print(table)
+
+
+@discover.command("approve")
+@click.argument("pattern_name")
+def discover_approve(pattern_name: str):
+    """Scaffold a new detector from an approved hypothesis."""
+    from stain.discovery import scaffold_detector, load_hypothesis_store
+
+    disc_dir = _discovery_dir()
+    store = load_hypothesis_store(disc_dir / "hypotheses.yaml")
+
+    try:
+        detector_id, path = scaffold_detector(
+            pattern_name, store=store,
+            store_path=disc_dir / "hypotheses.yaml",
+        )
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[green]Scaffolded {detector_id} at {path}/[/green]")
+    console.print("[dim]Edit the prompt.md, then benchmark before promoting.[/dim]")
+
+
+@discover.command("promote")
+@click.argument("detector_id")
+def discover_promote(detector_id: str):
+    """Enable a scaffolded detector."""
+    from stain.discovery import promote_detector
+
+    try:
+        promote_detector(detector_id.upper())
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[green]{detector_id.upper()} enabled[/green]")

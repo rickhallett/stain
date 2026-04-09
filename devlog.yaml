@@ -348,3 +348,23 @@
     - corpus/corpus.yaml
     - tests/test_corpus.py
     - tests/test_generate.py
+
+- id: "014"
+  date: "2026-04-09"
+  title: "Ring 4 — Discovery Pipeline"
+  context: >
+    Ring 3 built corpus infrastructure. Ring 4 closes the loop: Stain
+    analyses its own output to surface new pattern categories that existing
+    detectors don't cover.
+  decision: >
+    Discovery agent (Sonnet-tier) receives text + detector results + pattern
+    catalogue, finds what detectors missed. Hypotheses persist in
+    discovery/hypotheses.yaml with merge-on-recurrence. CLI: discover (run),
+    discover list, discover approve (scaffold new detector dir), discover
+    promote (enable detector). Zero hardcoded prompts — discovery prompt
+    lives in agents/discovery/prompt.md.
+  artifacts:
+    - src/stain/discovery.py
+    - agents/discovery/prompt.md
+    - src/stain/cli.py
+    - tests/test_discovery.py
