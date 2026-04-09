@@ -1,93 +1,150 @@
-<p align="center">
-  <h1 align="center">Stain</h1>
-  <p align="center">
-    Multi-agent text analysis pipeline that surfaces LLM generation patterns
-    <br />
-    <em>Detect AI slop through rhetorical pattern analysis, sentence rhythm, and lexical diversity.</em>
-  </p>
-</p>
+# Stain
 
-<p align="center">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/litellm-provider%20agnostic-orange?logo=openai&logoColor=white" alt="litellm" />
-  <img src="https://img.shields.io/badge/cerebras-qwen3%20235B-purple" alt="Cerebras" />
-</p>
+**Pattern density profiler for LLM-generated text.**
+
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white)
+![litellm](https://img.shields.io/badge/litellm-provider%20agnostic-orange?logo=openai&logoColor=white)
+![PyPI](https://img.shields.io/badge/pypi-stain--cli-green)
 
 ---
 
 ## What is Stain?
 
-Stain analyses text for LLM generation patterns. Six detectors examine rhetorical structure, sentence rhythm, lexical diversity, and other linguistic signals to surface the tells that distinguish machine-generated prose from human writing.
+Stain is not an AI detector. It does not answer "was this written by AI?" It answers **"how much does this text sound like AI, and where?"** Six independent LLM-backed detectors examine rhetorical patterns, sentence rhythm, lexical diversity, hedging density, structural predictability, and semantic emptiness. The composite score measures pattern density, not provenance.
 
-The pipeline is provider-agnostic (all inference via litellm), content-addressed (every benchmark run is keyed by config hash + timestamp), and designed for repeatable evaluation across models.
+## Install
+
+```bash
+pip install stain-cli
+
+# or with uv
+uv pip install stain-cli
+```
+
+Set your API key in `.env` or environment:
+
+```bash
+export CEREBRAS_API_KEY=your-key-here
+```
+
+## Quickstart
+
+```bash
+# Analyse a file
+stain analyse post.txt
+
+# Pipe from stdin
+cat essay.txt | stain analyse -
+
+# Analyse a URL
+stain analyse https://example.com/blog-post
+
+# Score only (CI-friendly)
+stain analyse post.txt --score
+
+# HTML report opened in browser
+stain analyse post.txt --serve
+
+# JSON to stdout
+stain analyse post.txt --json
+
+# HTML to file
+stain analyse post.txt --html > report.html
+```
 
 ## Detectors
 
-| ID | Focus |
-|----|-------|
-| D1 | Rhetorical pattern analysis |
-| D2 | Sentence rhythm and cadence |
-| D3 | Lexical diversity |
-| D4 | Structural markers |
-| D5 | Hedging and qualification patterns |
-| D6 | Composite signal aggregation |
+| ID | Name | What it measures |
+|----|------|------------------|
+| D1 | Rhetorical Pattern | Correctio, tricolon, false balance, escalation, anaphora, semantic couplets, pivot conjunctions |
+| D2 | Sentence Rhythm | Length variance, cadence regularity, burstiness, paragraph symmetry, opener templates |
+| D3 | Lexical Diversity | Type-token ratio, phrase recycling, register flattening, synonym avoidance, filler vocabulary |
+| D4 | Hedging Density | Qualifier stacking, epistemic hedges, non-committal framing, both-sides padding, meta acknowledgment |
+| D5 | Structural Predictability | Rigid intro-body-conclusion, signpost narration, numbered scaffolding, question setups, symmetrical paragraphs |
+| D6 | Semantic Emptiness | Broadening closers, filler transitions, restated premises, empty emphasis, circular conclusions |
 
-Each detector has a versioned prompt in `detectors/`, tracked by SHA256 hash.
+Each detector runs independently with a versioned prompt. Results are combined into a weighted composite score. See [docs/detectors.md](docs/detectors.md) for full pattern descriptions.
 
-## Architecture
+## Output Modes
 
-```
-stain/
-├── src/stain/
-│   ├── cli.py              Entry point (Click)
-│   ├── detector.py         Core detection logic
-│   ├── discovery.py        Text source discovery
-│   ├── benchmark.py        Repeatable model evaluation
-│   ├── corpus.py           Corpus management
-│   ├── generate.py         Synthetic text generation
-│   ├── research.py         Research pipeline (integrates with Arcana)
-│   ├── orchestrator.py     Multi-agent orchestration
-│   ├── registry.py         Detector registry
-│   ├── audit.py            Audit trail
-│   └── models.py           Pydantic data models
-├── detectors/              Versioned prompt files (D1–D6)
-├── benchmarks/             YAML configs for repeatable evaluation
-├── results/benchmarks/     Content-addressed benchmark output
-├── devlog.yaml             Chronological decision log (append-only)
-└── tests/
-```
+| Flag | Mode | Description |
+|------|------|-------------|
+| *(default)* | rich | Coloured table with per-detector scores, annotations, highlighted spans |
+| `--json` | json | Full result object. Falls back to this when stdout is not a TTY |
+| `--plain` | plain | One-line summary per input |
+| `--score` | score | Bare composite score. Useful for scripting and CI |
+| `--html` | html | Self-contained HTML report to stdout |
+| `--serve` | serve | Renders HTML report and opens it in the default browser |
 
-## Usage
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Score below threshold (default: 0.55) |
+| 1 | Score at or above threshold |
+| 2 | Input error (file not found, empty input) |
+| 3 | API/LLM error |
+
+The threshold is configurable: `stain analyse post.txt --threshold 0.40`
+
+## Discovery
+
+Stain has a self-teaching loop. The discovery pipeline runs all six detectors against a text, then asks a separate LLM pass to identify **patterns the existing detectors missed**.
 
 ```bash
-# Install
-uv sync
+# Run discovery on a file
+stain discover post.txt
 
-# Run analysis on a text file
-stain analyse input.txt
+# Run discovery across a corpus tier
+stain discover --corpus ai
 
-# Run a benchmark
-stain benchmark run benchmarks/cerebras-qwen3.yaml
+# Review hypotheses
+stain discover list
 
-# Compare benchmark runs
-stain benchmark compare results/benchmarks/run_a results/benchmarks/run_b
+# Approve a hypothesis (scaffolds a new detector)
+stain discover approve <hypothesis-id>
+
+# Promote approved patterns into the detector registry
+stain discover promote
 ```
 
-## Model Selection
+See [docs/methodology.md](docs/methodology.md) for the theory behind the self-teaching loop.
 
-Cerebras Qwen3 235B is the default detector model. In a three-way benchmark it achieved 100% classification accuracy at θ=0.50, 0.371 separation, zero failures, sub-1s latency. See `devlog.yaml#004` for the full evaluation.
+## Configuration
 
-## Design Principles
+Config resolution is cascading:
 
-- **Content-addressed outputs.** Benchmark runs keyed by config hash + timestamp. Prompts tracked by SHA256. Nothing silently overwritten.
-- **Provider-agnostic inference.** All LLM calls through litellm. Swap models by changing a config string.
-- **Validate model output.** Small models produce garbage offsets. The annotation validation pipeline repairs what it can and marks the rest.
-- **Record artifacts by default.** If a decision was made, it should be traceable.
+1. Explicit path: `stain analyse post.txt --config my.yaml`
+2. Local: `stain.config.yaml` in the current directory
+3. User: `~/.config/stain/config.yaml`
+4. Package defaults
+
+Initialize user config:
+
+```bash
+stain init
+```
+
+Model selection uses litellm format (`provider/model`). The default detector model is `cerebras/qwen-3-235b-a22b-instruct-2507`.
+
+## MCP Server
+
+Stain exposes an MCP (Model Context Protocol) server for editor integrations:
+
+```bash
+stain mcp serve
+```
+
+## Documentation
+
+- [Detector Reference](docs/detectors.md) -- full pattern descriptions for all six detectors
+- [Extending Stain](docs/extending.md) -- how to create new detectors
+- [Methodology](docs/methodology.md) -- the thesis behind multi-agent detection
 
 ## Related
 
-- [Tells / Sloptics](https://www.sloptics.dev/) — The field taxonomy of LLM output failure modes that Stain's detectors are calibrated against.
-- [Arcana](https://github.com/rickhallett/arcana) — Multi-agent research pipeline. Stain's research module integrates with Arcana for document analysis.
+- [Sloptics](https://www.sloptics.dev/) -- field taxonomy of LLM output failure modes
+- [Arcana](https://github.com/rickhallett/arcana) -- multi-agent research pipeline
 
 ## License
 
