@@ -247,6 +247,24 @@ class TestCorpusLabel:
         )
         assert (tmp_path / "gold" / "known_llm" / "unknown_post.txt").is_file()
 
+    def test_label_collision_raises(self, tmp_path):
+        ambig_file = self._setup_with_ambiguous(tmp_path)
+        # Place a file at the destination first
+        dest = tmp_path / "gold" / "known_human" / "unknown_post.txt"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text("already here")
+        with pytest.raises(CorpusError, match="already exists"):
+            corpus_label(
+                corpus_dir=tmp_path,
+                file_path=ambig_file,
+                label="human",
+                tier="gold",
+                source="test",
+                domain="blog",
+            )
+        # Original file should still be in place
+        assert ambig_file.exists()
+
     def test_label_nonexistent_file_raises(self, tmp_path):
         _make_tier(tmp_path, "gold", human_count=0, llm_count=0)
         with pytest.raises(CorpusError, match="not found"):

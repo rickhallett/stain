@@ -97,8 +97,8 @@ def generate_llm_samples(
         )
         entries.append(entry)
         manifest.samples.append(entry)
+        save_manifest(manifest, manifest_path)
 
-    save_manifest(manifest, manifest_path)
     return entries
 
 
@@ -180,8 +180,8 @@ def scrape_human_samples(
         )
         entries.append(entry)
         manifest.samples.append(entry)
+        save_manifest(manifest, manifest_path)
 
-    save_manifest(manifest, manifest_path)
     return entries
 
 

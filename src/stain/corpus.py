@@ -167,8 +167,11 @@ def corpus_label(
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / file_path.name
 
-    shutil.move(str(file_path), str(target_path))
+    if target_path.exists():
+        raise CorpusError(f"Destination already exists: {target_path}")
 
+    # Update manifest first, then move — if manifest save fails,
+    # the file stays in place and no state is corrupted.
     entry = SampleEntry(
         id=file_path.stem,
         label=label,
@@ -184,5 +187,7 @@ def corpus_label(
         manifest = Manifest(tier=tier)
     manifest.samples.append(entry)
     save_manifest(manifest, manifest_path)
+
+    shutil.move(str(file_path), str(target_path))
 
     return entry
