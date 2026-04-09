@@ -15,7 +15,24 @@ import yaml
 
 
 DISCOVERY_DIR = Path("discovery")
-AGENTS_DIR = Path("agents")
+
+
+def _find_agents_dir() -> Path:
+    """Find agents directory — local first, then package data."""
+    local = Path("agents")
+    if local.is_dir():
+        return local
+    try:
+        import importlib.resources
+        pkg_data = importlib.resources.files("stain") / "data" / "agents"
+        if pkg_data.is_dir():
+            return Path(str(pkg_data))
+    except (TypeError, FileNotFoundError):
+        pass
+    return local
+
+
+AGENTS_DIR = _find_agents_dir()
 
 # Pattern names must be safe for filesystem use — lowercase alphanumeric + underscores only
 VALID_PATTERN_NAME = re.compile(r"^[a-z][a-z0-9_]{1,60}$")

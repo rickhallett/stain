@@ -52,6 +52,35 @@ def cli():
 
 
 @cli.command()
+def init():
+    """Initialize Stain config in ~/.config/stain/."""
+    import yaml as _yaml
+    from stain.config import DEFAULT_CONFIG
+
+    config_dir = Path.home() / ".config" / "stain"
+    config_path = config_dir / "config.yaml"
+
+    if config_path.is_file():
+        console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
+        console.print("[dim]Delete it first if you want to reinitialize.[/dim]")
+        return
+
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(_yaml.dump(DEFAULT_CONFIG, default_flow_style=False, sort_keys=False))
+
+    api_key = click.prompt(
+        "Cerebras API key (or Enter to skip)", default="", show_default=False,
+    )
+    if api_key:
+        env_path = config_dir / ".env"
+        env_path.write_text(f"CEREBRAS_API_KEY={api_key}\n")
+        console.print(f"  [green]API key saved to {env_path}[/green]")
+
+    console.print(f"\n[green]Stain initialized at {config_dir}/[/green]")
+    console.print("[dim]Run 'stain analyse <file>' to get started.[/dim]")
+
+
+@cli.command()
 @click.option("--detector", "-d", default=None, help="Run a single detector (e.g. D1)")
 @click.option("--input", "-i", "input_path", default=None, type=click.Path(exists=True), help="Analyse a single file")
 @click.option("--config", "-c", "config_path", default=None, type=click.Path(exists=True), help="Config file path")
@@ -147,6 +176,8 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
 @click.option("--json", "output_json", is_flag=True, help="JSON output")
 @click.option("--plain", is_flag=True, help="One-liner output")
 @click.option("--score", "score_only", is_flag=True, help="Score only")
+@click.option("--html", "output_html", is_flag=True, help="HTML report output")
+@click.option("--serve", "serve", is_flag=True, help="Serve HTML report in browser")
 @click.option("--threshold", "-t", default=0.55, type=float, help="Exit code threshold (default: 0.55)")
 @click.option("--config", "-c", "config_path", default=None, type=click.Path(exists=True))
 def analyse_cmd(
@@ -154,6 +185,8 @@ def analyse_cmd(
     output_json: bool,
     plain: bool,
     score_only: bool,
+    output_html: bool,
+    serve: bool,
     threshold: float,
     config_path: str | None,
 ):
@@ -173,7 +206,8 @@ def analyse_cmd(
     from stain.output import OutputMode, detect_mode, format_json, format_plain, format_score
 
     config = load_config(Path(config_path) if config_path else None)
-    mode = detect_mode(json_flag=output_json, plain_flag=plain, score_flag=score_only)
+    mode = detect_mode(json_flag=output_json, plain_flag=plain, score_flag=score_only,
+                       html_flag=output_html, serve_flag=serve)
 
     # Resolve inputs
     try:
@@ -214,6 +248,19 @@ def analyse_cmd(
         elif mode == OutputMode.SCORE:
             prefix = "" if single else f"{item.source}: "
             click.echo(f"{prefix}{format_score(result)}")
+        elif mode == OutputMode.HTML:
+            from stain.html import render_html_report
+            click.echo(render_html_report(result, item.text))
+        elif mode == OutputMode.SERVE:
+            from stain.html import render_html_report
+            import tempfile
+            import webbrowser
+            html_content = render_html_report(result, item.text)
+            tmpdir = tempfile.mkdtemp()
+            report_path = Path(tmpdir) / "stain-report.html"
+            report_path.write_text(html_content)
+            console.print(f"[green]Report: file://{report_path}[/green]")
+            webbrowser.open(f"file://{report_path}")
         elif mode == OutputMode.RICH:
             _render_rich(result, item.text, item.source)
 
@@ -767,3 +814,26 @@ def research_update_cmd(url: str | None, model: str | None):
         )
     console.print(f"  Processed {total} paper(s), {new_hyp} new hypothesis(es)")
     console.print("[green]Research update complete[/green]")
+
+
+# ---------------------------------------------------------------------------
+# MCP commands
+# ---------------------------------------------------------------------------
+
+@cli.group()
+def mcp():
+    """MCP server for editor integration."""
+    pass
+
+
+@mcp.command("serve")
+def mcp_serve():
+    """Start the MCP server over stdio."""
+    import asyncio
+    from stain.mcp_server import run_mcp_server
+
+    try:
+        asyncio.run(run_mcp_server())
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        raise SystemExit(1)

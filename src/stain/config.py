@@ -1,4 +1,4 @@
-"""Configuration loader."""
+"""Configuration loader with cascading resolution."""
 
 from __future__ import annotations
 
@@ -10,16 +10,51 @@ import yaml
 from stain.registry import discover_detectors
 
 
-DEFAULT_CONFIG_PATH = Path("stain.config.yaml")
+DEFAULT_CONFIG = {
+    "models": {
+        "detector": "cerebras/qwen-3-235b-a22b-instruct-2507",
+        "orchestrator": "anthropic/claude-sonnet-4-5-20250514",
+    },
+    "corpus": {
+        "path": "corpus/",
+        "gold": "corpus/gold/",
+        "bulk": "corpus/bulk/",
+        "ambiguous": "corpus/ambiguous/",
+    },
+    "results": {"path": "results/"},
+    "audit": {"enabled": True, "verbosity": "hashes", "path": ".stain/audit"},
+}
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
-    """Load config from YAML file."""
-    config_path = path or DEFAULT_CONFIG_PATH
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config not found: {config_path}")
-    with open(config_path) as f:
-        return yaml.safe_load(f)
+    """Load config with cascading resolution.
+
+    Resolution order:
+    1. Explicit path (if given)
+    2. Local stain.config.yaml (CWD)
+    3. ~/.config/stain/config.yaml (user)
+    4. Package defaults
+    """
+    if path is not None:
+        if not path.exists():
+            raise FileNotFoundError(f"Config not found: {path}")
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    # Local config
+    local = Path("stain.config.yaml")
+    if local.is_file():
+        with open(local) as f:
+            return yaml.safe_load(f)
+
+    # User config
+    user = Path.home() / ".config" / "stain" / "config.yaml"
+    if user.is_file():
+        with open(user) as f:
+            return yaml.safe_load(f)
+
+    # Package defaults
+    return DEFAULT_CONFIG.copy()
 
 
 def get_enabled_detectors(config: dict[str, Any] | None = None) -> list[str]:

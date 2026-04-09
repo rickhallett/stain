@@ -280,3 +280,34 @@ class TestResearchFetchCli:
             runner = CliRunner()
             result = runner.invoke(cli, ["research", "fetch"])
             assert result.exit_code == 0
+
+
+class TestAnalyseHtml:
+    def test_html_flag(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Some text to analyse and output as HTML report.")
+        with patch("stain.cli.analyse", return_value=_mock_analyse()):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["analyse", str(f), "--html"])
+            assert "<!DOCTYPE html>" in result.output
+            assert "0.650" in result.output or "0.65" in result.output
+
+
+class TestInit:
+    def test_init_creates_config(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["init"], input="\n")
+        assert result.exit_code == 0
+        config_path = tmp_path / ".config" / "stain" / "config.yaml"
+        assert config_path.is_file()
+
+    def test_init_existing_warns(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config_dir = tmp_path / ".config" / "stain"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.yaml").write_text("existing: true\n")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["init"], input="\n")
+        assert result.exit_code == 0
+        assert "already exists" in result.output.lower()

@@ -42,6 +42,37 @@ class TestGetEnabledDetectors:
         assert len(enabled) >= 1
 
 
+class TestConfigResolution:
+    def test_local_config_preferred(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        local = tmp_path / "stain.config.yaml"
+        local.write_text("models:\n  detector: local/model\n")
+        config = load_config()
+        assert config["models"]["detector"] == "local/model"
+
+    def test_user_config_fallback(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # no local config here
+        user_dir = tmp_path / ".config" / "stain"
+        user_dir.mkdir(parents=True)
+        (user_dir / "config.yaml").write_text("models:\n  detector: user/model\n")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config = load_config()
+        assert config["models"]["detector"] == "user/model"
+
+    def test_defaults_when_no_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config = load_config()
+        assert "models" in config
+        assert config["models"]["detector"] != ""
+
+    def test_explicit_path_overrides_all(self, tmp_path):
+        explicit = tmp_path / "custom.yaml"
+        explicit.write_text("models:\n  detector: explicit/model\n")
+        config = load_config(explicit)
+        assert config["models"]["detector"] == "explicit/model"
+
+
 class TestGetDetectorWeight:
     def test_d1_weight(self):
         config = load_config()

@@ -388,3 +388,28 @@
     - research/config.yaml
     - src/stain/cli.py
     - tests/test_research.py
+
+- id: "016"
+  date: "2026-04-09"
+  title: "Ring 6 — Distribution & Visualization"
+  context: >
+    Five rings of internal tooling. Ring 6 makes Stain usable by others:
+    pip-installable, self-initializing, visually rich, editor-integrated,
+    and documented.
+  decision: >
+    Cascading config (local -> user -> defaults) with stain init command.
+    Self-contained HTML reports with dark theme and annotation overlays.
+    MCP server exposes analyse/detector tools over stdio for Claude Code
+    and VS Code. Package as stain-cli with bundled detectors/agents via
+    hatchling force-include. Four docs: README, detectors, extending,
+    methodology.
+  artifacts:
+    - src/stain/config.py
+    - src/stain/html.py
+    - src/stain/mcp_server.py
+    - src/stain/cli.py
+    - pyproject.toml
+    - README.md
+    - docs/detectors.md
+    - docs/extending.md
+    - docs/methodology.md
