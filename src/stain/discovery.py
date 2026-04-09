@@ -233,6 +233,149 @@ def discover_corpus(
     return results
 
 
+PROMPT_TEMPLATE = '''# {name} Detector
+
+You are analysing text to identify the "{pattern_name}" pattern — a potential
+marker of LLM-generated content.
+
+## Pattern Definition
+
+{description}
+
+## What to Look For
+
+Scan the input text for instances of this pattern. For each instance:
+1. Identify the exact span in the text (character offsets)
+2. Classify the severity (high/medium/low)
+3. Explain why this instance matches the pattern
+
+## Scoring
+
+- **0.0-0.3**: No significant instances found
+- **0.3-0.6**: Some instances present but could be natural
+- **0.6-1.0**: Strong presence suggesting LLM generation
+
+## Output Format
+
+Return a JSON object:
+
+```json
+{{
+  "verdict": {{
+    "score": 0.0,
+    "confidence": 0.0,
+    "summary": "Brief assessment of pattern presence",
+    "annotations": [
+      {{
+        "span_start": 0,
+        "span_end": 100,
+        "pattern": "{pattern_name}",
+        "severity": "medium",
+        "explanation": "Why this span matches the pattern"
+      }}
+    ]
+  }}
+}}
+```
+'''
+
+
+def scaffold_detector(
+    pattern_name: str,
+    store: HypothesisStore | None = None,
+    store_path: Path | None = None,
+    detectors_dir: Path | None = None,
+) -> tuple[str, Path]:
+    """Create detector directory from hypothesis. Returns (detector_id, path)."""
+    from stain.registry import DETECTORS_DIR
+
+    if detectors_dir is None:
+        detectors_dir = DETECTORS_DIR
+    if store is None:
+        store = load_hypothesis_store(store_path)
+
+    if pattern_name not in store.hypotheses:
+        raise DiscoveryError(f"Hypothesis not found: {pattern_name}")
+
+    hyp = store.hypotheses[pattern_name]
+
+    # Find next detector ID by scanning directory names
+    existing_ids = []
+    for d in detectors_dir.iterdir():
+        if d.is_dir() and d.name[0] == "D" and "_" in d.name:
+            try:
+                existing_ids.append(int(d.name.split("_")[0][1:]))
+            except ValueError:
+                continue
+    next_num = max(existing_ids, default=0) + 1
+    next_id = f"D{next_num}"
+
+    # Create directory
+    dir_name = f"{next_id}_{pattern_name}"
+    detector_dir = detectors_dir / dir_name
+    detector_dir.mkdir(parents=True)
+
+    # detector.yaml
+    name = pattern_name.replace("_", " ").title()
+    yaml_content = {
+        "id": next_id,
+        "name": name,
+        "version": "0.1.0",
+        "weight": 1.0,
+        "enabled": False,
+        "description": hyp.description,
+        "patterns": [
+            {"name": pattern_name, "description": hyp.description}
+        ],
+    }
+    (detector_dir / "detector.yaml").write_text(
+        yaml.dump(yaml_content, default_flow_style=False, sort_keys=False)
+    )
+
+    # prompt.md
+    prompt_text = PROMPT_TEMPLATE.format(
+        name=name,
+        pattern_name=pattern_name,
+        description=hyp.description,
+    )
+    (detector_dir / "prompt.md").write_text(prompt_text)
+
+    # CHANGELOG + version
+    (detector_dir / "CHANGELOG.md").write_text(
+        f"# {next_id} Changelog\n\n## v0.1.0\n- Scaffolded from discovery hypothesis\n"
+    )
+    versions_dir = detector_dir / "versions"
+    versions_dir.mkdir()
+    (versions_dir / "v0.1.0.md").write_text(
+        f"# v0.1.0\nScaffolded from discovery hypothesis: {pattern_name}\n"
+    )
+
+    # Update hypothesis status
+    hyp.status = "approved"
+    save_hypothesis_store(store, store_path)
+
+    return next_id, detector_dir
+
+
+def promote_detector(detector_id: str, detectors_dir: Path | None = None) -> None:
+    """Enable a detector by setting enabled: true."""
+    from stain.registry import DETECTORS_DIR, clear_cache
+
+    if detectors_dir is None:
+        detectors_dir = DETECTORS_DIR
+
+    matches = [d for d in detectors_dir.iterdir() if d.is_dir() and d.name.startswith(f"{detector_id}_")]
+    if not matches:
+        raise DiscoveryError(f"Detector directory not found for {detector_id}")
+
+    yaml_path = matches[0] / "detector.yaml"
+    raw = yaml.safe_load(yaml_path.read_text())
+    raw["enabled"] = True
+    yaml_path.write_text(yaml.dump(raw, default_flow_style=False, sort_keys=False))
+
+    clear_cache()
+
+
 def run_discovery(
     input_text: str,
     detector_results: list,

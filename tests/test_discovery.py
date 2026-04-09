@@ -21,6 +21,8 @@ from stain.discovery import (
     _build_pattern_catalogue,
     discover_file,
     discover_corpus,
+    scaffold_detector,
+    promote_detector,
 )
 from stain.models import DetectorResult, Meta, Verdict
 
@@ -287,3 +289,86 @@ class TestDiscoverCorpus:
              patch("stain.discovery.litellm.completion", return_value=mock_llm):
             results = discover_corpus("gold", config=config, discovery_dir=tmp_path / "disc")
         assert len(results) == 2
+
+
+class TestScaffoldDetector:
+    def _make_store_with_hypothesis(self, tmp_path):
+        store = HypothesisStore()
+        store.merge([{
+            "pattern_name": "manufactured_consensus",
+            "description": "Phrases implying broad agreement without evidence",
+            "confidence": 0.7,
+            "suggested_detector": "New detector",
+        }], "test.txt")
+        path = tmp_path / "hypotheses.yaml"
+        save_hypothesis_store(store, path)
+        return store, path
+
+    def test_scaffold_creates_directory(self, tmp_path):
+        store, store_path = self._make_store_with_hypothesis(tmp_path)
+        detectors_dir = tmp_path / "detectors"
+        detectors_dir.mkdir()
+        (detectors_dir / "D1_test").mkdir()
+        (detectors_dir / "D1_test" / "detector.yaml").write_text("id: D1\nname: Test\n")
+        (detectors_dir / "D1_test" / "prompt.md").write_text("test")
+
+        detector_id, path = scaffold_detector(
+            "manufactured_consensus",
+            store=store,
+            store_path=store_path,
+            detectors_dir=detectors_dir,
+        )
+        assert detector_id == "D2"
+        assert (path / "detector.yaml").is_file()
+        assert (path / "prompt.md").is_file()
+        assert (path / "CHANGELOG.md").is_file()
+
+    def test_scaffold_sets_enabled_false(self, tmp_path):
+        store, store_path = self._make_store_with_hypothesis(tmp_path)
+        detectors_dir = tmp_path / "detectors"
+        detectors_dir.mkdir()
+        (detectors_dir / "D1_test").mkdir()
+        (detectors_dir / "D1_test" / "detector.yaml").write_text("id: D1\nname: Test\n")
+        (detectors_dir / "D1_test" / "prompt.md").write_text("test")
+
+        _, path = scaffold_detector(
+            "manufactured_consensus", store=store,
+            store_path=store_path, detectors_dir=detectors_dir,
+        )
+        raw = yaml.safe_load((path / "detector.yaml").read_text())
+        assert raw["enabled"] is False
+
+    def test_scaffold_updates_hypothesis_status(self, tmp_path):
+        store, store_path = self._make_store_with_hypothesis(tmp_path)
+        detectors_dir = tmp_path / "detectors"
+        detectors_dir.mkdir()
+        (detectors_dir / "D1_test").mkdir()
+        (detectors_dir / "D1_test" / "detector.yaml").write_text("id: D1\nname: Test\n")
+        (detectors_dir / "D1_test" / "prompt.md").write_text("test")
+
+        scaffold_detector(
+            "manufactured_consensus", store=store,
+            store_path=store_path, detectors_dir=detectors_dir,
+        )
+        reloaded = load_hypothesis_store(store_path)
+        assert reloaded.hypotheses["manufactured_consensus"].status == "approved"
+
+    def test_scaffold_unknown_hypothesis_raises(self, tmp_path):
+        store = HypothesisStore()
+        with pytest.raises(DiscoveryError, match="not found"):
+            scaffold_detector("nonexistent", store=store, detectors_dir=tmp_path)
+
+
+class TestPromoteDetector:
+    def test_promote_enables_detector(self, tmp_path):
+        d_dir = tmp_path / "D7_test_pattern"
+        d_dir.mkdir()
+        (d_dir / "detector.yaml").write_text("id: D7\nname: Test\nenabled: false\n")
+        (d_dir / "prompt.md").write_text("test")
+        promote_detector("D7", detectors_dir=tmp_path)
+        raw = yaml.safe_load((d_dir / "detector.yaml").read_text())
+        assert raw["enabled"] is True
+
+    def test_promote_missing_detector_raises(self, tmp_path):
+        with pytest.raises(DiscoveryError, match="not found"):
+            promote_detector("D99", detectors_dir=tmp_path)
