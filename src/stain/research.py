@@ -109,8 +109,9 @@ def fetch_papers_from_arcana(
     for job in jobs:
         job_id = job.get("id", "")
         status = job.get("status", "")
+        job_type = job.get("job_type", "")
 
-        if status != "complete":
+        if status != "completed" or job_type != "ingest":
             continue
         if job_id in existing_ids:
             continue
@@ -118,25 +119,25 @@ def fetch_papers_from_arcana(
             logger.warning(f"Skipping job with unsafe ID: {job_id!r}")
             continue
 
+        # Fetch raw extracted text (not query reports)
         try:
-            detail_resp = httpx.get(f"{arcana_url}/api/jobs/{job_id}", timeout=30)
+            text_resp = httpx.get(f"{arcana_url}/api/jobs/{job_id}/text", timeout=30)
         except Exception:
-            logger.warning(f"Failed to fetch detail for job {job_id}")
+            logger.warning(f"Failed to fetch text for job {job_id}")
             continue
 
-        if detail_resp.status_code != 200:
+        if text_resp.status_code != 200:
             continue
 
-        detail = detail_resp.json()
-        report = detail.get("report") or {}
-        text = report.get("answer", "")
+        text_data = text_resp.json()
+        text = text_data.get("text", "")
 
         if not text:
             continue
 
         paper = Paper(
             paper_id=job_id,
-            title=detail.get("filename", job_id),
+            title=text_data.get("title", job.get("filename", job_id)),
             source="arcana",
             text=text,
             doc_type=job.get("doc_type", ""),
