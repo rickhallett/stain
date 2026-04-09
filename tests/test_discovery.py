@@ -19,6 +19,8 @@ from stain.discovery import (
     _load_discovery_prompt,
     _format_detector_results,
     _build_pattern_catalogue,
+    discover_file,
+    discover_corpus,
 )
 from stain.models import DetectorResult, Meta, Verdict
 
@@ -204,3 +206,84 @@ class TestRunDiscovery:
                 pattern_catalogue="",
             )
         assert results == []
+
+
+class TestDiscoverFile:
+    def test_discover_file_returns_result(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Some text to analyse for patterns in the discovery pipeline.")
+
+        mock_composite = MagicMock()
+        mock_composite.detector_results = [_make_detector_result()]
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = json.dumps({
+            "hypotheses": [{"pattern_name": "found_pattern", "description": "d", "confidence": 0.6, "suggested_detector": "New"}]
+        })
+
+        with patch("stain.discovery.analyse", return_value=mock_composite), \
+             patch("stain.discovery.litellm.completion", return_value=mock_llm):
+            result = discover_file(f, discovery_dir=tmp_path / "disc")
+        assert result.source == str(f)
+        assert len(result.hypotheses) == 1
+
+    def test_discover_file_saves_run(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Text for testing that discovery runs get persisted to disk.")
+        disc_dir = tmp_path / "disc"
+
+        mock_composite = MagicMock()
+        mock_composite.detector_results = []
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = '{"hypotheses": []}'
+
+        with patch("stain.discovery.analyse", return_value=mock_composite), \
+             patch("stain.discovery.litellm.completion", return_value=mock_llm):
+            discover_file(f, discovery_dir=disc_dir)
+        runs = list((disc_dir / "runs").glob("*.json"))
+        assert len(runs) == 1
+
+    def test_discover_file_merges_into_store(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Text for testing that hypotheses get merged into the store.")
+        disc_dir = tmp_path / "disc"
+
+        mock_composite = MagicMock()
+        mock_composite.detector_results = []
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = json.dumps({
+            "hypotheses": [{"pattern_name": "new_thing", "description": "d", "confidence": 0.7, "suggested_detector": "New"}]
+        })
+
+        with patch("stain.discovery.analyse", return_value=mock_composite), \
+             patch("stain.discovery.litellm.completion", return_value=mock_llm):
+            discover_file(f, discovery_dir=disc_dir)
+        store = load_hypothesis_store(disc_dir / "hypotheses.yaml")
+        assert "new_thing" in store.hypotheses
+
+
+class TestDiscoverCorpus:
+    def test_discover_corpus_processes_files(self, tmp_path):
+        tier_dir = tmp_path / "corpus" / "gold"
+        (tier_dir / "known_llm").mkdir(parents=True)
+        (tier_dir / "known_llm" / "s1.txt").write_text("Sample one for corpus discovery test.")
+        (tier_dir / "known_llm" / "s2.txt").write_text("Sample two for corpus discovery test.")
+
+        mock_composite = MagicMock()
+        mock_composite.detector_results = []
+
+        mock_llm = MagicMock()
+        mock_llm.choices = [MagicMock()]
+        mock_llm.choices[0].message.content = '{"hypotheses": []}'
+
+        config = {"corpus": {"path": str(tmp_path / "corpus")}}
+
+        with patch("stain.discovery.analyse", return_value=mock_composite), \
+             patch("stain.discovery.litellm.completion", return_value=mock_llm):
+            results = discover_corpus("gold", config=config, discovery_dir=tmp_path / "disc")
+        assert len(results) == 2

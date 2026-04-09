@@ -16,6 +16,12 @@ DISCOVERY_DIR = Path("discovery")
 AGENTS_DIR = Path("agents")
 
 
+def analyse(text: str, config: dict | None = None, **kwargs):
+    """Thin shim — delegates to orchestrator.analyse; exists here so tests can patch stain.discovery.analyse."""
+    from stain.orchestrator import analyse as _analyse
+    return _analyse(text, config=config, **kwargs)
+
+
 class DiscoveryError(Exception):
     """Discovery operation error."""
     pass
@@ -155,6 +161,76 @@ def _build_pattern_catalogue() -> str:
             lines.append(f"  - {p.name}: {p.description}")
         lines.append("")
     return "\n".join(lines)
+
+
+def discover_file(
+    file_path: Path,
+    config: dict | None = None,
+    discovery_model: str | None = None,
+    discovery_dir: Path | None = None,
+) -> DiscoveryResult:
+    """Full pipeline: run detectors + discovery on a single file."""
+    from stain.config import load_config
+
+    if config is None:
+        config = load_config()
+    if discovery_dir is None:
+        discovery_dir = DISCOVERY_DIR
+
+    text = file_path.read_text()
+    composite = analyse(text, config=config)
+    catalogue = _build_pattern_catalogue()
+
+    model = discovery_model or config.get("models", {}).get(
+        "orchestrator", "anthropic/claude-sonnet-4-5-20250514"
+    )
+    raw_hypotheses = run_discovery(text, composite.detector_results, model, catalogue)
+
+    now = datetime.now(timezone.utc).isoformat()
+    result = DiscoveryResult(
+        timestamp=now,
+        source=str(file_path),
+        model=model,
+        hypotheses=raw_hypotheses,
+    )
+
+    save_discovery_run(result, base_dir=discovery_dir / "runs")
+    store = load_hypothesis_store(discovery_dir / "hypotheses.yaml")
+    store.merge(raw_hypotheses, str(file_path))
+    save_hypothesis_store(store, discovery_dir / "hypotheses.yaml")
+
+    return result
+
+
+def discover_corpus(
+    tier: str,
+    config: dict | None = None,
+    discovery_model: str | None = None,
+    discovery_dir: Path | None = None,
+) -> list[DiscoveryResult]:
+    """Run discovery across all files in a corpus tier."""
+    from stain.config import load_config
+
+    if config is None:
+        config = load_config()
+
+    corpus_root = Path(config.get("corpus", {}).get("path", "corpus"))
+    tier_dir = corpus_root / tier
+
+    results = []
+    for subdir in ["known_human", "known_llm"]:
+        dir_path = tier_dir / subdir
+        if not dir_path.is_dir():
+            continue
+        for f in sorted(dir_path.glob("*.txt")):
+            result = discover_file(
+                f, config=config,
+                discovery_model=discovery_model,
+                discovery_dir=discovery_dir,
+            )
+            results.append(result)
+
+    return results
 
 
 def run_discovery(
