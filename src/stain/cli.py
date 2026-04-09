@@ -633,3 +633,137 @@ def discover_promote(detector_id: str):
         raise SystemExit(1)
 
     console.print(f"[green]{detector_id.upper()} enabled[/green]")
+
+
+# ---------------------------------------------------------------------------
+# Research commands
+# ---------------------------------------------------------------------------
+
+def _research_dir() -> Path:
+    """Get research directory."""
+    return Path("research")
+
+
+@cli.group()
+def research():
+    """Manage research paper pipeline."""
+    pass
+
+
+@research.command("fetch")
+@click.option("--url", default=None, help="Arcana API URL override")
+def research_fetch_cmd(url: str | None):
+    """Fetch new papers from Arcana."""
+    from stain.research import research_fetch, load_research_config
+
+    res_dir = _research_dir()
+    config = load_research_config(res_dir / "config.yaml")
+    arcana_url = url or config.get("arcana", {}).get("url", "http://localhost:8000")
+
+    with console.status(f"[bold]Fetching from {arcana_url}..."):
+        count = research_fetch(arcana_url, research_dir=res_dir)
+    console.print(f"[green]Fetched {count} new paper(s)[/green]")
+
+
+@research.command("extract")
+@click.option("--model", default=None, help="Extraction model override")
+def research_extract_cmd(model: str | None):
+    """Run hypothesis extraction on unprocessed papers."""
+    from stain.research import research_extract, load_research_config
+    from stain.discovery import DISCOVERY_DIR
+
+    res_dir = _research_dir()
+    config = load_research_config(res_dir / "config.yaml")
+    extract_model = model or config.get("model", "anthropic/claude-sonnet-4-5-20250514")
+
+    with console.status("[bold]Extracting hypotheses..."):
+        new_hyp, total = research_extract(
+            model=extract_model, research_dir=res_dir, discovery_dir=DISCOVERY_DIR,
+        )
+    console.print(f"[green]Processed {total} paper(s), {new_hyp} new hypothesis(es)[/green]")
+
+
+@research.command("list")
+def research_list_cmd():
+    """Show fetched papers and their extraction status."""
+    from stain.research import load_paper_index
+
+    res_dir = _research_dir()
+    index = load_paper_index(res_dir / "index.yaml")
+
+    if not index.papers:
+        console.print("[dim]No papers fetched. Run 'stain research fetch' first.[/dim]")
+        return
+
+    table = Table(title="Research Papers")
+    table.add_column("ID", style="bold")
+    table.add_column("Title")
+    table.add_column("Source")
+    table.add_column("Extracted")
+
+    for pid, p in sorted(index.papers.items()):
+        extracted = "[green]yes[/green]" if p.extracted else "[yellow]no[/yellow]"
+        table.add_row(pid, p.title[:50], p.source, extracted)
+
+    console.print(table)
+
+
+@research.command("show")
+@click.argument("paper_id")
+def research_show_cmd(paper_id: str):
+    """Show detail for a specific paper."""
+    from stain.research import load_paper_index
+
+    res_dir = _research_dir()
+    index = load_paper_index(res_dir / "index.yaml")
+
+    if paper_id not in index.papers:
+        console.print(f"[red]Paper not found: {paper_id}[/red]")
+        raise SystemExit(1)
+
+    paper = index.papers[paper_id]
+    console.print(Panel(
+        f"[bold]{paper.title}[/bold]\n\n"
+        f"ID: {paper.paper_id}\n"
+        f"Source: {paper.source}\n"
+        f"Type: {paper.doc_type}\n"
+        f"Extracted: {'yes' if paper.extracted else 'no'}\n"
+        f"Fetched: {paper.fetched_at}\n\n"
+        f"[dim]Text preview:[/dim]\n{paper.text[:500]}{'...' if len(paper.text) > 500 else ''}",
+        title="Paper Detail",
+    ))
+
+    extraction_file = res_dir / "extractions" / f"{paper_id}.json"
+    if extraction_file.is_file():
+        data = json.loads(extraction_file.read_text())
+        hyps = data.get("hypotheses", [])
+        if hyps:
+            console.print(f"\n[bold]Extracted {len(hyps)} hypothesis(es):[/bold]")
+            for h in hyps:
+                console.print(f"  - [bold]{h.get('pattern_name', '?')}[/bold] ({h.get('confidence', '?')})")
+                console.print(f"    {h.get('description', '')[:80]}")
+
+
+@research.command("update")
+@click.option("--url", default=None, help="Arcana API URL override")
+@click.option("--model", default=None, help="Extraction model override")
+def research_update_cmd(url: str | None, model: str | None):
+    """Full pipeline: fetch -> extract -> report."""
+    from stain.research import research_fetch, research_extract, load_research_config
+    from stain.discovery import DISCOVERY_DIR
+
+    res_dir = _research_dir()
+    config = load_research_config(res_dir / "config.yaml")
+    arcana_url = url or config.get("arcana", {}).get("url", "http://localhost:8000")
+    extract_model = model or config.get("model", "anthropic/claude-sonnet-4-5-20250514")
+
+    with console.status(f"[bold]Fetching from {arcana_url}..."):
+        fetched = research_fetch(arcana_url, research_dir=res_dir)
+    console.print(f"  Fetched {fetched} new paper(s)")
+
+    with console.status("[bold]Extracting hypotheses..."):
+        new_hyp, total = research_extract(
+            model=extract_model, research_dir=res_dir, discovery_dir=DISCOVERY_DIR,
+        )
+    console.print(f"  Processed {total} paper(s), {new_hyp} new hypothesis(es)")
+    console.print("[green]Research update complete[/green]")

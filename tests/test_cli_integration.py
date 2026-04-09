@@ -244,3 +244,39 @@ class TestCorpusGenerate:
                 "--domain", "linkedin",
             ])
             assert result.exit_code == 0
+
+
+class TestResearchList:
+    def test_list_empty(self, tmp_path):
+        with patch("stain.cli._research_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["research", "list"])
+            assert result.exit_code == 0
+
+    def test_list_shows_papers(self, tmp_path):
+        from stain.research import Paper, PaperIndex, save_paper_index
+        idx = PaperIndex()
+        idx.papers["j1"] = Paper(
+            paper_id="j1", title="LLM Detection Study",
+            source="arcana", text="content", extracted=True,
+        )
+        save_paper_index(idx, tmp_path / "index.yaml")
+
+        with patch("stain.cli._research_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["research", "list"])
+            assert result.exit_code == 0
+            assert "LLM Detection" in result.output
+
+
+class TestResearchFetchCli:
+    def test_fetch_cli(self, tmp_path):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = []
+
+        with patch("stain.research.httpx.get", return_value=mock_resp), \
+             patch("stain.cli._research_dir", return_value=tmp_path):
+            runner = CliRunner()
+            result = runner.invoke(cli, ["research", "fetch"])
+            assert result.exit_code == 0
