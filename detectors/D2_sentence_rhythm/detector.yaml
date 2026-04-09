@@ -1,0 +1,17 @@
+id: D2
+name: "Sentence Rhythm"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Measures sentence length variance, paragraph cadence regularity, and burstiness. Human writers are erratic; LLMs are metronomic."
+patterns:
+  - name: uniform_length
+    description: "Sentences cluster within a narrow length band"
+  - name: predictable_cadence
+    description: "Alternating short-long pattern repeats mechanically"
+  - name: low_burstiness
+    description: "Absence of sudden length spikes or clusters of very short sentences"
+  - name: paragraph_symmetry
+    description: "Paragraphs have suspiciously similar sentence counts and lengths"
+  - name: opener_regularity
+    description: "Sentence openings follow a repeating structural template"

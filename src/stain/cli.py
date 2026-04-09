@@ -15,10 +15,11 @@ from rich.text import Text
 
 from stain import __version__
 from stain.config import get_enabled_detectors, load_config
-from stain.detector import run_detector
+from stain.detector import DEFAULT_MODEL, run_detector
 from stain.models import DetectorResult
 from stain.benchmark import BenchmarkConfig, compare_runs, run_benchmark
-from stain.orchestrator import analyse
+from stain.orchestrator import analyse, _make_audit_logger
+from stain.registry import discover_detectors
 
 console = Console()
 
@@ -81,7 +82,8 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
     results_dir = Path(config.get("results", {}).get("path", "results")) / run_id
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    model = config.get("models", {}).get("detector", "cerebras/qwen-3-235b-a22b-instruct-2507")
+    model = config.get("models", {}).get("detector", DEFAULT_MODEL)
+    audit_logger = _make_audit_logger(config)
 
     console.print(f"\n[bold]Stain run[/bold] {run_id}")
     console.print(f"Detectors: {', '.join(detector_ids)}")
@@ -99,7 +101,7 @@ def run(detector: str | None, input_path: str | None, config_path: str | None):
 
         file_results: list[DetectorResult] = []
         for did in detector_ids:
-            result = run_detector(did, text, model=model)
+            result = run_detector(did, text, model=model, audit_logger=audit_logger)
             file_results.append(result)
 
         # Display inline score
@@ -220,3 +222,37 @@ def benchmark_compare(run_dirs: tuple[str, ...]):
         console.print("[red]Provide at least 2 run directories to compare.[/red]")
         return
     compare_runs([Path(d) for d in run_dirs])
+
+
+@cli.group()
+def detectors():
+    """Manage detector plugins."""
+    pass
+
+
+@detectors.command("list")
+@click.option("--all", "show_all", is_flag=True, help="Show disabled detectors too")
+def detectors_list(show_all: bool):
+    """List available detectors."""
+    found = discover_detectors(enabled_only=not show_all)
+
+    table = Table(title="Detectors")
+    table.add_column("ID", style="bold")
+    table.add_column("Name")
+    table.add_column("Version")
+    table.add_column("Weight", justify="right")
+    table.add_column("Enabled")
+    table.add_column("Patterns", justify="right")
+
+    for did, info in sorted(found.items()):
+        enabled_str = "[green]yes[/green]" if info.enabled else "[dim]no[/dim]"
+        table.add_row(
+            info.id,
+            info.name,
+            info.version,
+            f"{info.weight:.1f}",
+            enabled_str,
+            str(len(info.patterns)),
+        )
+
+    console.print(table)

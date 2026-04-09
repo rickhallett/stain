@@ -1,0 +1,17 @@
+id: D4
+name: "Hedging Density"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Detects qualifier stacking, epistemic hedges, and non-committal framing that LLMs use to avoid definitive claims."
+patterns:
+  - name: qualifier_stacking
+    description: "Multiple qualifiers in a single sentence or paragraph"
+  - name: epistemic_hedge
+    description: "Phrases expressing unnecessary uncertainty: 'it seems', 'arguably', 'one might say'"
+  - name: non_committal_framing
+    description: "Positions presented without the author committing to them"
+  - name: both_sides_padding
+    description: "Equal weight to opposing views when one is clearly favoured"
+  - name: meta_acknowledgment
+    description: "Acknowledging complexity as a substitute for resolving it: 'it's complicated', 'there are many factors'"

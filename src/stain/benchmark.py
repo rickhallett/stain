@@ -25,6 +25,7 @@ from rich.console import Console
 from rich.table import Table
 
 from stain import __version__
+from stain.audit import AuditLogger
 from stain.detector import run_detector
 
 console = Console()
@@ -121,12 +122,13 @@ def _run_with_retry(
     model: str,
     max_retries: int,
     retry_delay: float,
+    audit_logger: AuditLogger | None = None,
 ):
     """Run detector with exponential backoff on rate limits."""
     last_err = None
     for attempt in range(max_retries):
         try:
-            return run_detector(detector_id, text, model=model)
+            return run_detector(detector_id, text, model=model, audit_logger=audit_logger)
         except Exception as e:
             last_err = e
             err_str = str(e).lower()
@@ -163,6 +165,8 @@ def run_benchmark(config: BenchmarkConfig) -> Path:
     console.print(f"[bold]Config:[/bold]    {cfg_hash}")
     console.print()
 
+    audit_logger = AuditLogger(enabled=True)
+
     run_start = time.monotonic()
     samples: list[SampleResult] = []
 
@@ -180,6 +184,7 @@ def run_benchmark(config: BenchmarkConfig) -> Path:
                 r = _run_with_retry(
                     det_id, text, config.model,
                     config.max_retries, config.retry_delay,
+                    audit_logger=audit_logger,
                 )
                 sr.score = r.verdict.score
                 sr.confidence = r.verdict.confidence

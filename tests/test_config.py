@@ -5,13 +5,20 @@ from pathlib import Path
 import pytest
 
 from stain.config import get_detector_weight, get_enabled_detectors, load_config
+from stain.registry import clear_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry_cache():
+    clear_cache()
+    yield
+    clear_cache()
 
 
 class TestLoadConfig:
     def test_load_default(self):
         config = load_config()
         assert "models" in config
-        assert "detectors" in config
 
     def test_missing_config_raises(self):
         with pytest.raises(FileNotFoundError):
@@ -19,16 +26,20 @@ class TestLoadConfig:
 
 
 class TestGetEnabledDetectors:
-    def test_only_d1_enabled(self):
+    def test_all_detectors_enabled(self):
         config = load_config()
         enabled = get_enabled_detectors(config)
         assert "D1" in enabled
-        # D2-D6 are disabled in Phase 1
-        assert "D2" not in enabled
+        assert "D2" in enabled
+        assert "D3" in enabled
+        assert "D4" in enabled
+        assert "D5" in enabled
+        assert "D6" in enabled
 
-    def test_empty_config(self):
-        enabled = get_enabled_detectors({})
-        assert enabled == []
+    def test_returns_list(self):
+        enabled = get_enabled_detectors()
+        assert isinstance(enabled, list)
+        assert len(enabled) >= 1
 
 
 class TestGetDetectorWeight:

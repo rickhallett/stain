@@ -23,31 +23,8 @@ models:
   # Complex analysis (orchestrator, fallback)
   orchestrator: anthropic/claude-sonnet-4-5-20250514
 
-detectors:
-  D1:
-    name: Rhetorical Pattern
-    enabled: true
-    weight: 1.0
-  D2:
-    name: Sentence Rhythm
-    enabled: false  # Phase 2
-    weight: 1.0
-  D3:
-    name: Lexical Diversity
-    enabled: false
-    weight: 1.0
-  D4:
-    name: Hedging Density
-    enabled: false
-    weight: 1.0
-  D5:
-    name: Structural Predictability
-    enabled: false
-    weight: 1.0
-  D6:
-    name: Semantic Emptiness
-    enabled: false
-    weight: 1.0
+# Detector config now lives in detectors/*/detector.yaml (plugin registry)
+# Enable/disable detectors by editing their detector.yaml files directly.
 
 corpus:
   path: corpus/
@@ -57,3 +34,23 @@ corpus:
 
 results:
   path: results/
+
+audit:
+  enabled: true
+  verbosity: hashes  # full | hashes | off
+  path: .stain/audit
+
+validation:
+  enabled: false  # Enable when 3rd model family is benchmarked
+  min_models: 2
+  models:
+    primary: cerebras/qwen-3-235b-a22b-instruct-2507
+    validators:
+      - groq/llama-3.3-70b-versatile
+  require_for:
+    - detector_benchmark
+    - discovery_hypothesis
+    - corpus_label
+  skip_for:
+    - interactive_analyse
+    - corpus_generate

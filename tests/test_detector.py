@@ -12,6 +12,14 @@ from stain.detector import (
     _validate_annotations,
 )
 from stain.models import Annotation
+from stain.registry import clear_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry_cache():
+    clear_cache()
+    yield
+    clear_cache()
 
 
 class TestExtractJson:
@@ -34,6 +42,14 @@ class TestExtractJson:
     def test_invalid_json_raises(self):
         with pytest.raises(json.JSONDecodeError):
             _extract_json("not json at all")
+
+    def test_fenced_no_newline(self):
+        raw = '```{"key": "value"}```'
+        assert _extract_json(raw) == {"key": "value"}
+
+    def test_narrative_wrapped_json(self):
+        raw = '```json\n{"key": "value"}\n```'
+        assert _extract_json(raw) == {"key": "value"}
 
 
 class TestExtractQuotes:
@@ -180,5 +196,5 @@ class TestLoadPrompt:
         assert "correctio" in prompt.lower() or "Correctio" in prompt
 
     def test_unknown_detector_raises(self):
-        with pytest.raises(ValueError, match="Unknown detector"):
+        with pytest.raises(ValueError, match="not found"):
             _load_prompt("D99")

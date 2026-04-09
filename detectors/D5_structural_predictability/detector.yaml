@@ -1,0 +1,17 @@
+id: D5
+name: "Structural Predictability"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Analyses macro-structure: introduction-body-conclusion adherence, paragraph-level predictability, signpost meta-narration."
+patterns:
+  - name: rigid_ibc
+    description: "Strict introduction-body-conclusion structure with clear delineation"
+  - name: signpost_narration
+    description: "Meta-commentary directing the reader: 'Let me explain', 'Here's why'"
+  - name: numbered_scaffolding
+    description: "Explicit enumeration used as structural crutch: 'First... Second... Third...'"
+  - name: question_setup
+    description: "Rhetorical questions used as section headers or transitions"
+  - name: symmetrical_paragraphs
+    description: "Paragraphs follow a uniform internal template"

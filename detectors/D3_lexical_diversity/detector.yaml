@@ -1,0 +1,17 @@
+id: D3
+name: "Lexical Diversity"
+version: "0.1.0"
+weight: 1.0
+enabled: true
+description: "Scores vocabulary range, type-token ratio, and repetition of phrasing. LLM output tends toward a narrower working vocabulary within a given register."
+patterns:
+  - name: low_type_token
+    description: "Low ratio of unique words to total words"
+  - name: phrase_recycling
+    description: "Same multi-word phrases reused across paragraphs"
+  - name: register_flattening
+    description: "Vocabulary stays in a narrow formality band without variation"
+  - name: synonym_avoidance
+    description: "Repeated use of the same word where synonyms would be natural"
+  - name: filler_vocabulary
+    description: "Overuse of generic modifiers and connectors"
