@@ -6,6 +6,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import date
 from pathlib import Path
 from typing import Any
+import shutil
 
 import yaml
 
@@ -131,3 +132,57 @@ def corpus_validate(corpus_dir: Path) -> list[str]:
                     issues.append(f"[{tier_name}] Orphan file not in manifest: {rel}")
 
     return issues
+
+
+def corpus_label(
+    corpus_dir: Path,
+    file_path: Path,
+    label: str,
+    tier: str,
+    source: str,
+    domain: str,
+) -> SampleEntry:
+    """Move a file to a tier with a label.
+
+    Args:
+        corpus_dir: Root corpus directory.
+        file_path: Path to the file to label.
+        label: "human" or "llm".
+        tier: Target tier ("gold" or "bulk").
+        source: Origin of the content.
+        domain: Content domain (blog, linkedin, etc.).
+
+    Returns:
+        The new SampleEntry added to the manifest.
+    """
+    if not file_path.is_file():
+        raise CorpusError(f"File not found: {file_path}")
+    if label not in ("human", "llm"):
+        raise CorpusError(f"Invalid label: {label}. Must be 'human' or 'llm'.")
+    if tier not in TIER_NAMES:
+        raise CorpusError(f"Invalid tier: {tier}. Must be one of {TIER_NAMES}.")
+
+    label_dir = "known_human" if label == "human" else "known_llm"
+    target_dir = corpus_dir / tier / label_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / file_path.name
+
+    shutil.move(str(file_path), str(target_path))
+
+    entry = SampleEntry(
+        id=file_path.stem,
+        label=label,
+        source=source,
+        domain=domain,
+        file=f"{label_dir}/{file_path.name}",
+    )
+
+    manifest_path = corpus_dir / tier / "manifest.yaml"
+    if manifest_path.is_file():
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = Manifest(tier=tier)
+    manifest.samples.append(entry)
+    save_manifest(manifest, manifest_path)
+
+    return entry

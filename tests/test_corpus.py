@@ -3,6 +3,7 @@
 import pytest
 from pathlib import Path
 
+import shutil
 import yaml
 
 from stain.corpus import (
@@ -13,6 +14,7 @@ from stain.corpus import (
     CorpusError,
     corpus_stats,
     corpus_validate,
+    corpus_label,
 )
 
 
@@ -205,3 +207,66 @@ class TestManifestIO:
         raw = yaml.safe_load(manifest_path.read_text())
         assert raw["tier"] == "bulk"
         assert raw["samples"][0]["model"] == "test/model"
+
+
+class TestCorpusLabel:
+    def _setup_with_ambiguous(self, tmp_path):
+        """Create a gold tier and an ambiguous dir with one file."""
+        _make_tier(tmp_path, "gold", human_count=1, llm_count=0)
+        ambig_dir = tmp_path / "ambiguous"
+        ambig_dir.mkdir(exist_ok=True)
+        ambig_file = ambig_dir / "unknown_post.txt"
+        ambig_file.write_text("This is an ambiguous text sample for testing the label flow.")
+        return ambig_file
+
+    def test_label_as_human(self, tmp_path):
+        ambig_file = self._setup_with_ambiguous(tmp_path)
+        corpus_label(
+            corpus_dir=tmp_path,
+            file_path=ambig_file,
+            label="human",
+            tier="gold",
+            source="test_blog",
+            domain="blog",
+        )
+        assert (tmp_path / "gold" / "known_human" / "unknown_post.txt").is_file()
+        assert not ambig_file.exists()
+        m = load_manifest(tmp_path / "gold" / "manifest.yaml")
+        ids = [s.id for s in m.samples]
+        assert "unknown_post" in ids
+
+    def test_label_as_llm(self, tmp_path):
+        ambig_file = self._setup_with_ambiguous(tmp_path)
+        corpus_label(
+            corpus_dir=tmp_path,
+            file_path=ambig_file,
+            label="llm",
+            tier="gold",
+            source="generated",
+            domain="marketing",
+        )
+        assert (tmp_path / "gold" / "known_llm" / "unknown_post.txt").is_file()
+
+    def test_label_nonexistent_file_raises(self, tmp_path):
+        _make_tier(tmp_path, "gold", human_count=0, llm_count=0)
+        with pytest.raises(CorpusError, match="not found"):
+            corpus_label(
+                corpus_dir=tmp_path,
+                file_path=Path("/nonexistent/file.txt"),
+                label="human",
+                tier="gold",
+                source="test",
+                domain="blog",
+            )
+
+    def test_label_invalid_label_raises(self, tmp_path):
+        ambig_file = self._setup_with_ambiguous(tmp_path)
+        with pytest.raises(CorpusError, match="Invalid label"):
+            corpus_label(
+                corpus_dir=tmp_path,
+                file_path=ambig_file,
+                label="maybe",
+                tier="gold",
+                source="test",
+                domain="blog",
+            )
